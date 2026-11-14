@@ -16,6 +16,7 @@ from .base_service import BaseService
 class FlatpakService(BaseService):
     EXTENSION_ID = "org.freedesktop.Platform.VulkanLayer.lsfgvk"
     FLATHUB_REMOTE = "flathub"
+    FLATHUB_REPO_URL = "https://dl.flathub.org/repo/flathub.flatpakrepo"
     SUPPORTED_RUNTIMES = ("24.08", "25.08", "26.08")
     DERIVED_RUNTIME_IDS = {"org.gnome.Platform", "org.kde.Platform"}
     RUNTIME_METADATA_SECTION = "Extension org.freedesktop.Platform.GL"
@@ -137,6 +138,27 @@ class FlatpakService(BaseService):
             text=True,
         )
         return result.stdout.strip() if result.returncode == 0 else ""
+
+    def _ensure_user_flathub_remote(self) -> None:
+        result = self._run_flatpak_command(
+            ["remotes", "--user", "--columns=name"],
+            capture_output=True,
+            text=True,
+        )
+        if result.returncode != 0:
+            raise OSError(result.stderr.strip() or "Could not inspect user Flatpak remotes")
+        if self.FLATHUB_REMOTE in {line.strip() for line in result.stdout.splitlines()}:
+            return
+        result = self._run_flatpak_command(
+            ["remote-add", "--user", "--if-not-exists", self.FLATHUB_REMOTE, self.FLATHUB_REPO_URL],
+            capture_output=True,
+            text=True,
+        )
+        if result.returncode != 0:
+            raise OSError(
+                "Could not configure Flathub for the current user: "
+                + (result.stderr.strip() or "Flatpak remote-add failed")
+            )
 
     def _empty_state(self) -> Dict[str, object]:
         return {
@@ -357,6 +379,7 @@ class FlatpakService(BaseService):
                 system_installed = self._installed_extension_branches("system")
                 if branch in system_installed and branch not in user_installed:
                     return self._extension_result(branch, True, False, "is ready")
+                self._ensure_user_flathub_remote()
                 if branch in user_installed and self._user_extension_origin(branch) != self.FLATHUB_REMOTE:
                     result = self._run_flatpak_command(
                         ["uninstall", "--user", "--noninteractive", self._extension_ref(branch)],

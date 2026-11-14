@@ -33,6 +33,7 @@ class FlatpakServiceTests(unittest.TestCase):
         self.user_branches = set()
         self.system_branches = set()
         self.user_extension_origin = "flathub"
+        self.user_remotes = {"flathub"}
         self.apps = {"com.example.Game": "Example Game"}
         self.dll_dir = self.home / ".local/share/Steam/steamapps/common/Lossless Scaling"
         self.service._dll_directory = Mock(return_value=self.dll_dir)
@@ -114,6 +115,11 @@ class FlatpakServiceTests(unittest.TestCase):
         return self._result()
 
     def _run_flatpak_command(self, args, **_kwargs):
+        if args == ["remotes", "--user", "--columns=name"]:
+            return self._result("\n".join(sorted(self.user_remotes)))
+        if args[0] == "remote-add":
+            self.user_remotes.add(args[-2])
+            return self._result()
         if args[:2] == ["info", "--show-runtime"]:
             return self._result(self.runtime_ref + "\n")
         if args[:2] == ["info", "--show-metadata"]:
@@ -251,6 +257,88 @@ class FlatpakServiceTests(unittest.TestCase):
         user_id = self.home.stat().st_uid
         self.assertEqual(env["XDG_RUNTIME_DIR"], f"/run/user/{user_id}")
         self.assertEqual(env["DBUS_SESSION_BUS_ADDRESS"], f"unix:path=/run/user/{user_id}/bus")
+
+    def test_prepare_adds_missing_user_flathub_before_installing_extension(self):
+        self.runtime_ref = "org.freedesktop.Platform/x86_64/26.08"
+        # A system-wide Flathub, as shipped on Steam Deck, is not visible to --user installs.
+        self.user_remotes = {"flathub-beta"}
+
+        response = self.service.prepare_app("com.example.Game")
+
+        self.assertTrue(response["success"], response)
+        self.assertEqual(self.user_remotes, {"flathub-beta", "flathub"})
+        commands = [call.args[0] for call in self.service._run_flatpak_command.call_args_list]
+        add = [
+            "remote-add", "--user", "--if-not-exists", "flathub",
+            "https://dl.flathub.org/repo/flathub.flatpakrepo",
+        ]
+        self.assertEqual(commands.count(add), 1)
+        self.assertLess(commands.index(add), next(i for i, args in enumerate(commands) if args[0] == "install"))
+        self.assertTrue(self.service.prepare_app("com.example.Game")["success"])
+        self.assertTrue(self.service.remove_plugin_owned_environment()["success"])
+        self.assertEqual(self.user_remotes, {"flathub-beta", "flathub"})
+        commands = [call.args[0] for call in self.service._run_flatpak_command.call_args_list]
+        self.assertEqual(commands.count(add), 1)
+
+    def test_existing_user_flathub_is_preserved(self):
+        response = self.service.prepare_app("com.example.Game")
+
+        self.assertTrue(response["success"], response)
+        commands = [call.args[0] for call in self.service._run_flatpak_command.call_args_list]
+        self.assertFalse(any(args[0] in ("remote-add", "remote-modify", "remote-delete") for args in commands))
+
+    def test_system_extension_does_not_require_user_remote(self):
+        self.system_branches = {"24.08"}
+        self.user_remotes = set()
+
+        response = self.service.prepare_app("com.example.Game")
+
+        self.assertTrue(response["success"], response)
+        self.assertEqual(self.user_remotes, set())
+        commands = [call.args[0] for call in self.service._run_flatpak_command.call_args_list]
+        self.assertFalse(any(args[0] in ("remotes", "remote-add", "install") for args in commands))
+
+    def test_remote_setup_failure_preserves_existing_extension_and_overrides(self):
+        self.user_remotes = set()
+        self.user_branches = {"24.08"}
+        self.user_extension_origin = "lsfgvk-origin"
+        path = self.service._override_path("com.example.Game")
+        path.parent.mkdir(parents=True, exist_ok=True)
+        original = "[Environment]\nFOO=bar\n"
+        path.write_text(original, encoding="utf-8")
+
+        def fail_remote_add(args, **kwargs):
+            if args[0] == "remote-add":
+                return self._result(returncode=1, stderr="Network unavailable")
+            return self._run_flatpak_command(args, **kwargs)
+
+        self.service._run_flatpak_command.side_effect = fail_remote_add
+
+        response = self.service.prepare_app("com.example.Game")
+
+        self.assertFalse(response["success"])
+        self.assertIn("Could not configure Flathub", response["error"])
+        self.assertIn("Network unavailable", response["error"])
+        self.assertEqual(self.user_branches, {"24.08"})
+        self.assertEqual(path.read_text(encoding="utf-8"), original)
+        self.assertFalse(self.service.ownership_path.exists())
+        commands = [call.args[0] for call in self.service._run_flatpak_command.call_args_list]
+        self.assertFalse(any(args[0] in ("install", "uninstall", "override") for args in commands))
+
+    def test_remote_inspection_failure_does_not_change_configuration(self):
+        def fail_remotes(args, **kwargs):
+            if args[0] == "remotes":
+                return self._result(returncode=1, stderr="Cannot read remote configuration")
+            return self._run_flatpak_command(args, **kwargs)
+
+        self.service._run_flatpak_command.side_effect = fail_remotes
+
+        response = self.service.prepare_app("com.example.Game")
+
+        self.assertFalse(response["success"])
+        self.assertIn("Cannot read remote configuration", response["error"])
+        commands = [call.args[0] for call in self.service._run_flatpak_command.call_args_list]
+        self.assertFalse(any(args[0] in ("remote-add", "install", "uninstall", "override") for args in commands))
 
     def test_prepare_app_installs_runtime_and_persists_narrow_override(self):
         response = self.service.prepare_app("com.example.Game")
