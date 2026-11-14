@@ -16,7 +16,7 @@ from .base_service import BaseService
 class FlatpakService(BaseService):
     EXTENSION_ID = "org.freedesktop.Platform.VulkanLayer.lsfgvk"
     FLATHUB_REMOTE = "flathub"
-    SUPPORTED_RUNTIMES = ("24.08", "25.08")
+    SUPPORTED_RUNTIMES = ("24.08", "25.08", "26.08")
     DERIVED_RUNTIME_IDS = {"org.gnome.Platform", "org.kde.Platform"}
     RUNTIME_METADATA_SECTION = "Extension org.freedesktop.Platform.GL"
     OWNERSHIP_FILENAME = "flatpak_state.json"

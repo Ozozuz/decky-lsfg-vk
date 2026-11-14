@@ -126,7 +126,7 @@ class FlatpakServiceTests(unittest.TestCase):
             branches = self.user_branches if "--user" in args else self.system_branches
             return self._result("".join(self._extension_line(branch) for branch in sorted(branches)))
         if args[0] == "install":
-            self.user_branches.add(self.runtime_ref.rsplit("/", 1)[-1])
+            self.user_branches.add(args[-1].rsplit("/", 1)[-1])
             return self._result()
         if args[0] == "uninstall":
             self.user_branches.discard(args[-1].rsplit("/", 1)[-1])
@@ -151,6 +151,100 @@ class FlatpakServiceTests(unittest.TestCase):
         runtime, branch = self.service._resolve_runtime("com.example.Game")
         self.assertEqual(runtime, self.runtime_ref)
         self.assertEqual(branch, "25.08")
+
+    def test_resolves_freedesktop_26_08_runtime(self):
+        self.runtime_ref = "org.freedesktop.Platform/x86_64/26.08"
+
+        runtime, branch = self.service._resolve_runtime("com.example.Game")
+
+        self.assertEqual(runtime, self.runtime_ref)
+        self.assertEqual(branch, "26.08")
+
+    def test_resolves_derived_runtimes_with_26_08_metadata(self):
+        for runtime_id in ("org.gnome.Platform", "org.kde.Platform"):
+            for versions in ("26.08;26.08-extra;1.4", "26.08-extra;1.4"):
+                with self.subTest(runtime_id=runtime_id, versions=versions):
+                    self.runtime_ref = f"{runtime_id}/x86_64/test"
+                    self.runtime_metadata = (
+                        "[Extension org.freedesktop.Platform.GL]\n"
+                        f"versions={versions}\n"
+                    )
+
+                    runtime, branch = self.service._resolve_runtime("com.example.Game")
+
+                    self.assertEqual(runtime, self.runtime_ref)
+                    self.assertEqual(branch, "26.08")
+
+    def test_rejects_unsupported_runtime_branches(self):
+        for branch in ("23.08", "27.08"):
+            with self.subTest(branch=branch):
+                self.runtime_ref = f"org.freedesktop.Platform/x86_64/{branch}"
+                with self.assertRaisesRegex(ValueError, "Unsupported Flatpak runtime branch"):
+                    self.service._resolve_runtime("com.example.Game")
+                with self.assertRaisesRegex(ValueError, "supported Freedesktop base runtime"):
+                    self.service.runtime_branch_from_metadata(
+                        f"[Extension org.freedesktop.Platform.GL]\nversions={branch};1.4\n"
+                    )
+
+        self.service._run_flatpak_command.reset_mock()
+        response = self.service.install_extension("27.08")
+        self.assertFalse(response["success"])
+        self.assertIn("Unsupported Flatpak runtime branch 27.08", response["error"])
+        self.service._run_flatpak_command.assert_not_called()
+
+    def test_extension_status_lists_26_08_as_supported(self):
+        response = self.service.get_extension_status()
+
+        self.assertTrue(response["success"])
+        self.assertEqual(response["supported_branches"], ["24.08", "25.08", "26.08"])
+
+    def test_prepare_and_cleanup_26_08_preserve_existing_extensions(self):
+        self.runtime_ref = "org.freedesktop.Platform/x86_64/26.08"
+        self.user_branches = {"24.08"}
+        self.system_branches = {"25.08"}
+
+        response = self.service.prepare_app("com.example.Game")
+
+        self.assertTrue(response["success"], response)
+        self.assertTrue(response["prepared"])
+        self.assertEqual(response["runtime_branch"], "26.08")
+        self.service._run_flatpak_command.assert_any_call(
+            [
+                "install", "--user", "--noninteractive", "--or-update", "flathub",
+                "org.freedesktop.Platform.VulkanLayer.lsfgvk//26.08",
+            ],
+            capture_output=True, text=True,
+        )
+        self.assertEqual(self.user_branches, {"24.08", "26.08"})
+        state = json.loads(self.service.ownership_path.read_text(encoding="utf-8"))
+        self.assertEqual(state["plugin_owned_branches"], ["26.08"])
+
+        response = self.service.remove_plugin_owned_environment()
+
+        self.assertTrue(response["success"], response)
+        self.assertEqual(response["removed_branches"], ["26.08"])
+        self.assertEqual(self.user_branches, {"24.08"})
+        self.assertEqual(self.system_branches, {"25.08"})
+        self.assertFalse(self.service.ownership_path.exists())
+        self.assertFalse(self.service._override_path("com.example.Game").exists())
+
+    def test_prepare_26_08_install_failure_does_not_create_app_override(self):
+        self.runtime_ref = "org.freedesktop.Platform/x86_64/26.08"
+
+        def fail_install(args, **kwargs):
+            if args[0] == "install":
+                return self._result(returncode=1, stderr="Extension unavailable")
+            return self._run_flatpak_command(args, **kwargs)
+
+        self.service._run_flatpak_command.side_effect = fail_install
+
+        response = self.service.prepare_app("com.example.Game")
+
+        self.assertFalse(response["success"])
+        self.assertFalse(response["prepared"])
+        self.assertIn("Extension unavailable", response["error"])
+        self.assertFalse(self.service.ownership_path.exists())
+        self.assertFalse(self.service._override_path("com.example.Game").exists())
 
     def test_clean_env_targets_deck_user_session_bus(self):
         env = self.service._clean_env()
