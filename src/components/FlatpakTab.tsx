@@ -1,5 +1,5 @@
 import { ButtonItem, ConfirmModal, DialogButton, Field, Focusable, PanelSection, PanelSectionRow, gamepadDialogClasses, showModal } from "@decky/ui";
-import { useCallback, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { FaArrowLeft } from "react-icons/fa";
 import type { FlatpakApp, LsfgConfig, WorkaroundState } from "../api/lsfgApi";
 import { CollapsibleItemGroup, collapsibleItemGroupStyles, usePersistentCollapsed } from "./CollapsibleItemGroup";
@@ -43,7 +43,19 @@ export function FlatpakTab({
     () => selectedAppId ? apps.find((app) => app.app_id === selectedAppId) || null : null,
     [apps, selectedAppId],
   );
-  const close = useCallback(() => setSelectedAppId(null), []);
+  const backRef = useRef<HTMLDivElement>(null);
+  const enabledToggleRef = useRef<HTMLDivElement>(null);
+  const availableToggleRef = useRef<HTMLDivElement>(null);
+  const refreshRef = useRef<HTMLDivElement>(null);
+  const focusApp = useRef<string | null>(null);
+  const open = (appId: string) => {
+    focusApp.current = appId;
+    setSelectedAppId(appId);
+  };
+  const close = useCallback(() => {
+    focusApp.current = selectedAppId;
+    setSelectedAppId(null);
+  }, [selectedAppId]);
   const [enabledCollapsed, toggleEnabled] = usePersistentCollapsed(ENABLED_COLLAPSED_KEY);
   const [availableCollapsed, toggleAvailable] = usePersistentCollapsed(AVAILABLE_COLLAPSED_KEY);
 
@@ -55,6 +67,27 @@ export function FlatpakTab({
     () => apps.filter((app) => !app.enabled).sort((a, b) => a.app_name.localeCompare(b.app_name)),
     [apps],
   );
+  useEffect(() => {
+    if (focusApp.current === null) return;
+    const frame = requestAnimationFrame(() => {
+      const appId = focusApp.current;
+      focusApp.current = null;
+      const wasEnabled = apps.find((app) => app.app_id === appId)?.enabled;
+      const targets = selectedAppId
+        ? [backRef]
+        : wasEnabled
+          ? [enabledToggleRef, availableToggleRef, refreshRef]
+          : [availableToggleRef, enabledToggleRef, refreshRef];
+      for (const target of targets) {
+        const button = target.current?.querySelector<HTMLElement>('button:not(:disabled), [role="button"]:not([aria-disabled="true"])');
+        if (button) {
+          button.focus();
+          break;
+        }
+      }
+    });
+    return () => cancelAnimationFrame(frame);
+  }, [selectedAppId, apps]);
   const enableableApps = useMemo(
     () => availableApps.filter((app) => !(app.prepared && !app.owned) && !app.error),
     [availableApps],
@@ -101,14 +134,16 @@ export function FlatpakTab({
           }))}
           collapsed={enabledCollapsed}
           onToggle={toggleEnabled}
-          onSelect={setSelectedAppId}
+          onSelect={open}
+          toggleRef={enabledToggleRef}
         />
         <CollapsibleItemGroup
           title="Available"
           items={availableApps.map(itemFor)}
           collapsed={availableCollapsed}
           onToggle={toggleAvailable}
-          onSelect={setSelectedAppId}
+          onSelect={open}
+          toggleRef={availableToggleRef}
         />
         {enableableApps.length > 0 && (
           <PanelSectionRow>
@@ -136,9 +171,11 @@ export function FlatpakTab({
           </PanelSectionRow>
         )}
         <PanelSectionRow>
-          <ButtonItem layout="below" disabled={loading || Boolean(busyAppId)} onClick={() => void onRefresh()}>
-            {loading ? "Refreshing..." : "Refresh Flatpaks"}
-          </ButtonItem>
+          <div ref={refreshRef}>
+            <ButtonItem layout="below" disabled={loading || Boolean(busyAppId)} onClick={() => void onRefresh()}>
+              {loading ? "Refreshing..." : "Refresh Flatpaks"}
+            </ButtonItem>
+          </div>
         </PanelSectionRow>
       </PanelSection>
     );
@@ -146,14 +183,18 @@ export function FlatpakTab({
 
   if (!selected) {
     return (
-      <PanelSection title="Flatpak">
-        <PanelSectionRow>
-          <ButtonItem layout="below" onClick={close}>Back</ButtonItem>
-        </PanelSectionRow>
-        <PanelSectionRow>
-          <Field label="Flatpak application is no longer installed" />
-        </PanelSectionRow>
-      </PanelSection>
+      <Focusable onCancelButton={close}>
+        <PanelSection title="Flatpak">
+          <PanelSectionRow>
+            <div ref={backRef}>
+              <ButtonItem layout="below" onClick={close}>Back</ButtonItem>
+            </div>
+          </PanelSectionRow>
+          <PanelSectionRow>
+            <Field label="Flatpak application is no longer installed" />
+          </PanelSectionRow>
+        </PanelSection>
+      </Focusable>
     );
   }
 
@@ -180,7 +221,7 @@ export function FlatpakTab({
       <PanelSection>
         <PanelSectionRow>
           <div style={{ display: "flex", alignItems: "center", width: "100%" }}>
-            <Focusable noFocusRing style={{ flex: "none" }}>
+            <Focusable ref={backRef} noFocusRing style={{ flex: "none" }}>
               <DialogButton
                 aria-label="Back to Flatpaks"
                 onClick={close}

@@ -115,7 +115,7 @@ export function Content() {
     previousRunningWorkload.current = runningWorkload;
     if (runningWorkload && runningWorkload !== previous) {
       previousNowPlayingTab.current = tabForNowPlaying(nowPlayingTarget);
-      setTab("NowPlaying");
+      setTab((current) => current === "Flatpak" ? current : "NowPlaying");
     }
     else if (!runningWorkload && previous) {
       setTab((current) => current === "NowPlaying" ? previousNowPlayingTab.current : current);
