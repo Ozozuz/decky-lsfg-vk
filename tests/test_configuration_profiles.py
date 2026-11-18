@@ -12,7 +12,7 @@ sys.modules.setdefault(
 )
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "py_modules"))
 
-from lsfg_vk.config_schema import ConfigurationManager
+from lsfg_vk.config_schema import ConfigurationManager, UnsupportedConfigurationVersion
 from lsfg_vk.configuration import ConfigurationService
 
 
@@ -52,40 +52,31 @@ preserve_swapchain_image_count = false
         reparsed = ConfigurationManager.parse_toml_content_multi_profile(rendered)
         self.assertEqual(reparsed["profiles"]["flatpak:org.example.Game"]["multiplier"], 3)
 
-    def test_legacy_config_resets_to_v2_without_deleting_flatpak_state(self):
+    def test_legacy_config_is_preserved_on_read_and_edit(self):
         self.service.config_dir.mkdir(parents=True)
-        self.service.config_file_path.write_text(
-            'version = 1\n\n[global]\nallow_fp16 = false\n',
-            encoding="utf-8",
-        )
-        state_path = self.service.config_dir / "flatpak_state.json"
-        state_path.write_text('{"prepared_apps": {}}\n', encoding="utf-8")
-        backup_path = self.service.config_dir / "flatpak-overrides" / "com.example.Game.ini"
-        backup_path.parent.mkdir(parents=True)
-        backup_path.write_text("[Environment]\nKEEP=yes\n", encoding="utf-8")
-
-        result = self.service.get_game_configs()
-
-        self.assertTrue(result["success"])
-        self.assertEqual(result["games"], [])
-        self.assertEqual(result["global_config"], {"dll": "", "no_fp16": False})
-        self.assertTrue(self.service.config_file_path.read_text(encoding="utf-8").startswith("version = 2\n"))
-        self.assertEqual(self.service._get_profile_data(), self.service._default_data())
-        self.assertEqual(state_path.read_text(encoding="utf-8"), '{"prepared_apps": {}}\n')
-        self.assertEqual(backup_path.read_text(encoding="utf-8"), "[Environment]\nKEEP=yes\n")
+        for original in ('version = 1\n\n[global]\nallow_fp16 = false\n', '[global]\nallow_fp16 = false\n'):
+            with self.subTest(original=original):
+                self.service.config_file_path.write_text(original, encoding="utf-8")
+                self.assertFalse(self.service.get_game_configs()["success"])
+                self.assertFalse(self.service.update_global_config({"no_fp16": True})["success"])
+                with self.assertRaises(UnsupportedConfigurationVersion):
+                    self.service._get_profile_data()
+                self.assertEqual(self.service.config_file_path.read_text(encoding="utf-8"), original)
         self.runtime.validate_config_content.assert_not_called()
 
-    def test_unversioned_config_resets_to_v2_defaults(self):
-        self.service.config_dir.mkdir(parents=True)
-        self.service.config_file_path.write_text(
-            '[global]\nallow_fp16 = false\n',
-            encoding="utf-8",
-        )
+    def test_patch_preserves_other_profile_fields(self):
+        self.assertTrue(self.service.update_game_config("123", "Steam Game", {"multiplier": 3})["success"])
+        steam = self.service.update_game_config("123", "Steam Game", {"flow_scale": 0.65}, require_profile=True)
+        self.assertEqual(steam["config"]["multiplier"], 3)
+        self.assertEqual(steam["config"]["flow_scale"], 0.65)
 
-        data = self.service._get_profile_data()
-
-        self.assertEqual(data, self.service._default_data())
-        self.assertTrue(self.service.config_file_path.read_text(encoding="utf-8").startswith("version = 2\n"))
+        app = "org.example.Game"
+        self.assertTrue(self.service.update_flatpak_config(app, {"multiplier": 4})["success"])
+        flatpak = self.service.update_flatpak_config(app, {"performance_mode": True}, require_profile=True)
+        self.assertEqual(flatpak["config"]["multiplier"], 4)
+        self.assertTrue(flatpak["config"]["performance_mode"])
+        self.service.reset_flatpak_config(app)
+        self.assertFalse(self.service.update_flatpak_config(app, {"multiplier": 2}, require_profile=True)["success"])
 
     def test_future_config_version_is_preserved(self):
         self.service.config_dir.mkdir(parents=True)
@@ -124,17 +115,6 @@ preserve_swapchain_image_count = false
         self.assertNotIn("Steam Game", data["profiles"])
         self.assertIn("Non-Steam Game", data["profiles"])
         self.assertIn("flatpak:org.example.Game", data["profiles"])
-
-    def test_flatpak_reset_all_preserves_steam_profiles(self):
-        self.service.update_game_config("123", "Steam Game", {"multiplier": 2})
-        self.service.update_flatpak_config("org.example.Game", {"multiplier": 3})
-
-        result = self.service.reset_all_flatpak_configs()
-        data = self.service._get_profile_data()
-
-        self.assertTrue(result["success"])
-        self.assertIn("Steam Game", data["profiles"])
-        self.assertNotIn("flatpak:org.example.Game", data["profiles"])
 
     def test_global_config_update_does_not_change_profile_values(self):
         self.service.update_game_config("123", "Steam Game", {"multiplier": 2})

@@ -100,7 +100,7 @@ class FlatpakProfileService:
     def update_config(self, app_id: str, config: Dict[str, Any]) -> Dict[str, Any]:
         try:
             self._state_entry(app_id)
-            result = self.configuration_service.update_flatpak_config(app_id, config)
+            result = self.configuration_service.update_flatpak_config(app_id, config, require_profile=True)
             if not result.get("success"):
                 raise RuntimeError(result.get("error") or "Could not update Flatpak profile")
             return result

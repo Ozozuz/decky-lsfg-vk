@@ -34,9 +34,11 @@ function compareRunningProcesses(a: RunningFlatpakApp, b: RunningFlatpakApp): nu
 export function selectMostRecentRunningFlatpak(
   apps: FlatpakApp[],
   runningApps: RunningFlatpakApp[],
+  appId?: string,
 ): FlatpakApp | null {
   const newestProcessByApp = new Map<string, RunningFlatpakApp>();
   for (const running of runningApps) {
+    if (appId && running.app_id !== appId) continue;
     const current = newestProcessByApp.get(running.app_id);
     if (!current || compareRunningProcesses(running, current) < 0) {
       newestProcessByApp.set(running.app_id, running);
@@ -46,7 +48,7 @@ export function selectMostRecentRunningFlatpak(
   const candidates = Array.from(newestProcessByApp.values())
     .map((running) => ({
       running,
-      app: apps.find((app) => app.app_id === running.app_id) || null,
+      app: apps.find((app) => app.app_id === running.app_id && app.enabled && app.runtime_ready) || null,
     }))
     .filter((candidate): candidate is { running: RunningFlatpakApp; app: FlatpakApp } => candidate.app !== null);
   const activeCandidates = candidates.filter(({ running }) => running.active);
@@ -72,15 +74,13 @@ export function resolveNowPlayingTarget(
   if (runningGame?.source === "steam") {
     return runningGame.configured ? { kind: "steam", game: runningGame } : null;
   }
-  if (runningFlatpak) {
-    return {
-      kind: "flatpak",
-      app: runningFlatpak,
-      launcher: runningGame?.source === "nonSteam" ? runningGame : null,
-    };
+  if (runningGame?.source === "nonSteam") {
+    if (runningGame.isFlatpakShortcut) {
+      return runningFlatpak && runningFlatpak.app_id === runningGame.flatpakAppId
+        ? { kind: "flatpak", app: runningFlatpak, launcher: runningGame }
+        : null;
+    }
+    return runningGame.configured ? { kind: "nonSteam", game: runningGame } : null;
   }
-  if (runningGame?.source === "nonSteam" && runningGame.configured) {
-    return { kind: "nonSteam", game: runningGame };
-  }
-  return null;
+  return runningFlatpak ? { kind: "flatpak", app: runningFlatpak, launcher: null } : null;
 }

@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { getTargetSource, mergeGameTargets, targetsForSource } from "../src/utils/gameTargets.ts";
+import { getTargetSource, isBulkGameTarget, mergeGameTargets, targetsForSource } from "../src/utils/gameTargets.ts";
 
 const config = (appid: string, profile: string) => ({ appid, profile, config: {} });
 
@@ -47,4 +47,13 @@ test("direct Flatpak shortcuts remain non-Steam targets", () => {
 
   assert.equal(targets[0].source, "nonSteam");
   assert.equal(targets[0].isFlatpakShortcut, true);
+});
+
+
+test("bulk Non-Steam actions skip direct Flatpak shortcuts", () => {
+  const games = mergeGameTargets([], [
+    { appid: "123", name: "Flatpak", nonSteam: true, isFlatpakShortcut: true },
+    { appid: "456", name: "AppImage", nonSteam: true },
+  ], []);
+  assert.deepEqual(games.filter((game) => isBulkGameTarget(game, "nonSteam")).map((game) => game.appid), ["456"]);
 });

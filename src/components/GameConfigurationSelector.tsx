@@ -1,3 +1,4 @@
+import { isBulkGameTarget } from "../utils/gameTargets";
 import { ButtonItem, ConfirmModal, Field, PanelSectionRow, showModal } from "@decky/ui";
 import { useEffect, useRef } from "react";
 import type { GameTarget, KnownGameSource } from "../utils/gameTargets";
@@ -44,8 +45,8 @@ export function GameConfigurationSelector({
   });
   const enabledGames = sortGames(targets.filter((game) => game.configured));
   const availableGames = sortGames(targets.filter((game) => !game.configured));
-  const enableableGames = availableGames.filter((game) => game.source === source && !game.isFlatpakShortcut);
-  const removableGames = enabledGames.filter((game) => game.source === source && !game.isFlatpakShortcut);
+  const enableableGames = availableGames.filter((game) => isBulkGameTarget(game, source));
+  const removableGames = enabledGames.filter((game) => isBulkGameTarget(game, source));
   const sourceName = source === "nonSteam" ? "non-Steam shortcuts" : "Steam games";
   const emptyDescription = source === "nonSteam"
     ? "Steam has not reported any eligible non-Steam shortcuts"

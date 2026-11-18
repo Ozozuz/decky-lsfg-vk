@@ -90,7 +90,7 @@ class FlatpakProfileServiceTests(unittest.TestCase):
         self.flatpak._write_file(
             path,
             "[Context]\nfilesystems=~/Documents;\nsockets=wayland;\n"
-            "[Environment]\nDXVK_CONFIG=dxgi.syncInterval = 0\nKEEP=yes\n"
+            "[Environment]\nDXVK_CONFIG=dxgi.syncInterval = 0; dxvk.maxFrameRate = 45\nKEEP=yes\n"
             "[Session Bus Policy]\norg.example.Service=talk\n",
         )
         self.assertTrue(self.service.enable_app(self.app_id)["success"])
@@ -100,7 +100,8 @@ class FlatpakProfileServiceTests(unittest.TestCase):
         self.assertTrue(result["success"])
         self.assertEqual(result["state"]["dxvkFrameRate"], 30)
         content = path.read_text(encoding="utf-8")
-        self.assertIn("DXVK_CONFIG=dxvk.maxFrameRate = 30", content)
+        self.assertIn("DXVK_CONFIG=dxgi.syncInterval = 0; dxvk.maxFrameRate = 30", content)
+        self.assertNotIn("dxvk.maxFrameRate = 45", content)
         self.assertIn("VKD3D_FRAME_RATE=30", content)
         self.assertIn("KEEP=yes", content)
         self.assertIn("sockets=wayland", content)
@@ -108,10 +109,12 @@ class FlatpakProfileServiceTests(unittest.TestCase):
         self.assertNotIn("DXVK_HDR=0", content)
         self.assertIn("MESA_LOADER_DRIVER_OVERRIDE=zink", content)
 
+        self.assertTrue(self.service.set_workaround_state(self.app_id, {"dxvkFrameRate": 40})["success"])
+        self.assertIn("dxgi.syncInterval = 0; dxvk.maxFrameRate = 40", path.read_text(encoding="utf-8"))
         self.assertTrue(self.service.set_workaround_state(self.app_id, {"dxvkFrameRate": 0})["success"])
         content = path.read_text(encoding="utf-8")
         self.assertNotIn("VKD3D_FRAME_RATE=", content)
-        self.assertIn("DXVK_CONFIG=dxgi.syncInterval = 0", content)
+        self.assertIn("DXVK_CONFIG=dxgi.syncInterval = 0; dxvk.maxFrameRate = 45", content)
 
     def test_ownership_write_failure_restores_override_and_keeps_profile(self):
         self.assertTrue(self.service.enable_app(self.app_id)["success"])
@@ -165,6 +168,22 @@ class FlatpakProfileServiceTests(unittest.TestCase):
 
         self.assertTrue(result["success"])
         self.assertIn("EXTERNAL=yes", path.read_text(encoding="utf-8"))
+
+    def test_repairing_missing_runtime_keeps_existing_profile(self):
+        self.assertTrue(self.service.enable_app(self.app_id)["success"])
+        self.assertTrue(self.service.update_config(self.app_id, {"multiplier": 4})["success"])
+        self.assertTrue(self.service.set_workaround_state(self.app_id, {"dxvkFrameRate": 30})["success"])
+        with patch.object(self.flatpak, "_installed_extension_branches", return_value=set()):
+            item = self.service.get_apps()["apps"][0]
+            self.assertTrue(item["enabled"])
+            self.assertFalse(item["runtime_ready"])
+            with patch.object(self.flatpak, "ensure_extension", return_value={"success": True, "installed": True}) as install:
+                self.assertTrue(self.service.enable_app(self.app_id)["success"])
+                install.assert_called_once_with("24.08")
+        repaired = self.service.get_apps()["apps"][0]
+        self.assertTrue(repaired["runtime_ready"])
+        self.assertEqual(repaired["config"]["multiplier"], 4)
+        self.assertEqual(repaired["workarounds"]["dxvkFrameRate"], 30)
 
     def test_enabling_does_not_list_all_flatpak_apps(self):
         self.assertTrue(self.service.enable_app(self.app_id)["success"])

@@ -1,9 +1,11 @@
 import re
+import shlex
 from pathlib import Path
 from typing import Dict, Optional, Tuple
 
 from .base_service import BaseService
 from .constants import (
+    FLATPAK_APP_ID_PATTERN,
     STEAM_LOSSLESS_SCALING_APP_ID,
     STEAM_LOSSLESS_SCALING_BRANCH,
 )
@@ -114,6 +116,33 @@ class SteamService(BaseService):
         return values
 
     @staticmethod
+    def _flatpak_shortcut_id(arguments: list[str]) -> Optional[str]:
+        if not arguments or arguments[0] != "run":
+            return None
+        options_with_values = {
+            "--arch", "--branch", "--command", "--cwd", "--installation", "--runtime",
+            "--runtime-version", "--env", "--unset-env", "--filesystem", "--socket", "--device",
+        }
+        args = iter(arguments[1:])
+        for argument in args:
+            if argument == "--":
+                argument = next(args, "")
+            elif argument.startswith("-"):
+                if argument in options_with_values:
+                    next(args, None)
+                elif "=" not in argument and argument not in {
+                    "--user", "-u", "--system", "--file-forwarding", "--devel",
+                    "--die-with-parent", "-p",
+                }:
+                    return None
+                continue
+            if argument.startswith("runtime/"):
+                return None
+            app_id = argument.removeprefix("app/").split("/", 1)[0]
+            return app_id if FLATPAK_APP_ID_PATTERN.fullmatch(app_id) else None
+        return None
+
+    @staticmethod
     def _shortcut_game(shortcut: object) -> Optional[Dict[str, object]]:
         if not isinstance(shortcut, dict):
             return None
@@ -126,9 +155,19 @@ class SteamService(BaseService):
             "name": name,
             "nonSteam": True,
         }
-        executable = shortcut.get("Exe") or shortcut.get("exe")
-        if isinstance(executable, str) and executable.strip().strip('"') in {"flatpak", "/usr/bin/flatpak"}:
+        try:
+            executable = shlex.split(str(shortcut.get("Exe") or shortcut.get("exe") or ""))
+        except ValueError:
+            executable = []
+        if executable and executable[0] in {"flatpak", "/usr/bin/flatpak"}:
             game["isFlatpakShortcut"] = True
+            try:
+                options = shortcut.get("LaunchOptions") or shortcut.get("launchoptions") or ""
+                flatpak_id = SteamService._flatpak_shortcut_id([*executable[1:], *shlex.split(str(options))])
+            except ValueError:
+                flatpak_id = None
+            if flatpak_id:
+                game["flatpakAppId"] = flatpak_id
         return game
 
     def _shortcut_games(self):

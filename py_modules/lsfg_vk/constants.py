@@ -1,3 +1,6 @@
+import re
+
+
 LOCAL_BIN = ".local/bin"
 LOCAL_SHARE = ".local/share"
 LOCAL_LIB = ".local/lib"
@@ -23,3 +26,5 @@ LEGACY_LIB_FILENAME = "liblsfg-vk.so"
 LEGACY_JSON_FILENAME = "VkLayer_LS_frame_generation.json"
 
 BIN_DIR = "bin"
+
+FLATPAK_APP_ID_PATTERN = re.compile(r"^[A-Za-z0-9_][A-Za-z0-9_-]*(?:\.[A-Za-z0-9_][A-Za-z0-9_-]*)+$")

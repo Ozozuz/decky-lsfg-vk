@@ -4,7 +4,7 @@ import { Router } from "@decky/ui";
 import { getGameConfigs, getInstalledGames, getWorkaroundApps, getWorkaroundState, removeWorkaroundState, resetGameConfig, resetGameConfigs, setWorkaroundState, updateGameConfig, updateGlobalConfig as saveGlobalConfig, type GameConfigEntry, type GlobalConfig, type InstalledGame, type WorkaroundApp, type WorkaroundState } from "../api/lsfgApi";
 import { ConfigurationData, getDefaults } from "../config/configSchema";
 import { getDefaultWrapperPath, installWrapperIntegration, removeWrapperIntegration } from "../utils/steamLaunchOptions";
-import { getTargetSource, mergeGameTargets, type GameTarget, type KnownGameSource } from "../utils/gameTargets";
+import { getTargetSource, isBulkGameTarget, mergeGameTargets, type GameTarget, type KnownGameSource } from "../utils/gameTargets";
 import { flushWorkaroundSaves } from "../utils/workaroundSaves";
 import { showErrorToast } from "../utils/toastUtils";
 
@@ -63,6 +63,12 @@ export function useGameConfiguration() {
   const [runningGame, setRunningGame] = useState<GameTarget | null>(null);
   const [bulkOperationBusy, setBulkOperationBusy] = useState(false);
   const bulkOperationLock = useRef(false);
+  const profileOperations = useRef<Promise<unknown>>(Promise.resolve());
+  const enqueueProfileOperation = useCallback(<T,>(operation: () => Promise<T>): Promise<T> => {
+    const next = profileOperations.current.then(operation, operation);
+    profileOperations.current = next;
+    return next;
+  }, []);
   const previousQuickAccessVisible = useRef<boolean | null>(null);
   const quickAccessVisible = useQuickAccessVisible();
 
@@ -112,6 +118,8 @@ export function useGameConfiguration() {
         && current.nonSteam === next.nonSteam
         && current.source === next.source
         && current.configured === next.configured
+        && current.isFlatpakShortcut === next.isFlatpakShortcut
+        && current.flatpakAppId === next.flatpakAppId
           ? current
           : next
       ));
@@ -215,20 +223,21 @@ export function useGameConfiguration() {
     }
   }, [installedGames]);
 
-  const acquireBulkOperation = useCallback(() => {
-    if (bulkOperationLock.current) return false;
+  const enqueueBulkProfileOperation = useCallback(async (operation: () => Promise<void>) => {
+    if (bulkOperationLock.current) return;
     bulkOperationLock.current = true;
     setBulkOperationBusy(true);
-    return true;
-  }, []);
-
-  const releaseBulkOperation = useCallback(() => {
-    bulkOperationLock.current = false;
-    setBulkOperationBusy(false);
-  }, []);
+    try {
+      await enqueueProfileOperation(operation);
+    } finally {
+      bulkOperationLock.current = false;
+      setBulkOperationBusy(false);
+    }
+  }, [enqueueProfileOperation]);
 
   const cleanupAllWorkarounds = useCallback(async (): Promise<boolean> => {
     try {
+      await profileOperations.current.catch(() => {});
       const result = await getWorkaroundApps();
       if (!result.success) throw new Error(result.error || "Could not read workaround state");
       const cleaned = new Set<string>();
@@ -259,14 +268,22 @@ export function useGameConfiguration() {
     }
   }, [installedGames, removeTargetWorkarounds, targets]);
 
-  const saveFor = useCallback(async (appid: string, next: ConfigurationData, cleanupLaunchOptions = false) => {
-    const target = targets.find((item) => item.appid === appid);
-    if (!target?.name) return false;
-    if (cleanupLaunchOptions && !(await ensureTargetWorkarounds(target))) return false;
-    const result = await updateGameConfig(appid, target.name, next);
-    if (result.success) await load();
-    return result.success;
-  }, [ensureTargetWorkarounds, load, targets]);
+  const saveFor = useCallback((appid: string, changes: Partial<ConfigurationData>) => (
+    enqueueProfileOperation(async () => {
+      const target = targets.find((item) => item.appid === appid);
+      if (!target?.name) return false;
+      const result = await updateGameConfig(appid, target.name, changes, true);
+      const config = result.config;
+      if (!result.success || !config) throw new Error(result.error || "Could not save game profile");
+      setGames((games) => games.map((game) => game.appid === appid
+        ? { ...game, config, profile: result.profile || game.profile }
+        : game));
+      return true;
+    }).catch((error) => {
+      showErrorToast("Could not save game profile", asError(error).message);
+      return false;
+    })
+  ), [enqueueProfileOperation, targets]);
 
   const updateGlobal = useCallback(async (next: GlobalConfig): Promise<boolean> => {
     const result = await saveGlobalConfig(next);
@@ -275,7 +292,7 @@ export function useGameConfiguration() {
     return true;
   }, []);
 
-  const enable = useCallback(async (appid: string) => {
+  const enable = useCallback((appid: string) => enqueueProfileOperation(async () => {
     const target = targets.find((item) => item.appid === appid);
     if (!target?.name) return false;
     if (!(await ensureTargetWorkarounds(target))) return false;
@@ -283,44 +300,47 @@ export function useGameConfiguration() {
     if (result.success) await load();
     else await removeTargetWorkarounds(target);
     return result.success;
-  }, [ensureTargetWorkarounds, load, removeTargetWorkarounds, targets, template]);
+  }), [enqueueProfileOperation, ensureTargetWorkarounds, load, removeTargetWorkarounds, targets, template]);
 
-  const enableAll = useCallback(async (source: KnownGameSource): Promise<void> => {
-    if (!acquireBulkOperation()) return;
-    try {
-      const available = targets.filter((target) => target.source === source && !target.configured && target.name);
-      if (available.length === 0) return;
-      for (const target of available) {
-        if (!(await ensureTargetWorkarounds(target))) {
-          await load();
-          return;
-        }
-        const result = await updateGameConfig(target.appid, target.name, template);
-        if (!result.success) {
-          await removeTargetWorkarounds(target);
-          showErrorToast(
-            "Could not enable all games",
-            result.error || `Could not create a profile for ${target.name}`,
-          );
-          await load();
-          return;
-        }
+  const enableAll = useCallback((source: KnownGameSource): Promise<void> => enqueueBulkProfileOperation(async () => {
+    const available = targets.filter((target) => isBulkGameTarget(target, source) && !target.configured && target.name);
+    if (available.length === 0) return;
+    for (const target of available) {
+      if (!(await ensureTargetWorkarounds(target))) {
+        await load();
+        return;
       }
-      await load();
-    } finally {
-      releaseBulkOperation();
+      const result = await updateGameConfig(target.appid, target.name, template);
+      if (!result.success) {
+        await removeTargetWorkarounds(target);
+        showErrorToast(
+          "Could not enable all games",
+          result.error || `Could not create a profile for ${target.name}`,
+        );
+        await load();
+        return;
+      }
     }
-  }, [acquireBulkOperation, ensureTargetWorkarounds, load, removeTargetWorkarounds, releaseBulkOperation, targets, template]);
+    await load();
+  }), [enqueueBulkProfileOperation, ensureTargetWorkarounds, load, removeTargetWorkarounds, targets, template]);
 
-  const repair = useCallback(async (appid: string): Promise<boolean> => {
+  const repair = useCallback((appid: string): Promise<boolean> => enqueueProfileOperation(async () => {
     const target = targets.find((item) => item.appid === appid);
     if (!target) return false;
+    const profiles = await getGameConfigs();
+    if (!profiles.success || !profiles.games?.some((game) => game.appid === appid)) {
+      showErrorToast("Could not repair profile", profiles.error || "The game profile no longer exists");
+      return false;
+    }
     const success = await ensureTargetWorkarounds(target);
     if (success) await load();
     return success;
-  }, [ensureTargetWorkarounds, load, targets]);
+  }).catch((error) => {
+    showErrorToast("Could not repair profile", asError(error).message);
+    return false;
+  }), [enqueueProfileOperation, ensureTargetWorkarounds, load, targets]);
 
-  const resetFor = useCallback(async (appid: string): Promise<boolean> => {
+  const resetFor = useCallback((appid: string): Promise<boolean> => enqueueProfileOperation(async () => {
     const target = targets.find((item) => item.appid === appid);
     if (target && !(await removeTargetWorkarounds(target))) return false;
     const result = await resetGameConfig(appid);
@@ -331,31 +351,27 @@ export function useGameConfiguration() {
     setRunningGame((current) => current?.appid === appid ? { ...current, configured: false } : current);
     await load();
     return true;
-  }, [load, removeTargetWorkarounds, targets]);
+  }), [enqueueProfileOperation, load, removeTargetWorkarounds, targets]);
 
-  const resetAll = useCallback(async (source: KnownGameSource) => {
-    if (!acquireBulkOperation()) return;
-    try {
-      const selectedTargets = targets.filter((item) => item.configured && item.source === source);
-      if (selectedTargets.length === 0) return;
-      for (const target of selectedTargets) {
-        if (!(await removeTargetWorkarounds(target))) {
-          await load();
-          return;
-        }
-      }
-      const result = await resetGameConfigs(selectedTargets.map((target) => target.appid));
-      if (!result.success) {
-        showErrorToast("Could not remove all profiles", result.error || "Could not remove the selected profiles");
+  const resetAll = useCallback((source: KnownGameSource): Promise<void> => enqueueBulkProfileOperation(async () => {
+    const selectedTargets = targets.filter((item) => item.configured && isBulkGameTarget(item, source));
+    if (selectedTargets.length === 0) return;
+    for (const target of selectedTargets) {
+      if (!(await removeTargetWorkarounds(target))) {
         await load();
         return;
       }
-      setRunningGame((current) => current?.source === source ? { ...current, configured: false } : current);
-      await load();
-    } finally {
-      releaseBulkOperation();
     }
-  }, [acquireBulkOperation, load, removeTargetWorkarounds, releaseBulkOperation, targets]);
+    const result = await resetGameConfigs(selectedTargets.map((target) => target.appid));
+    if (!result.success) {
+      showErrorToast("Could not remove all profiles", result.error || "Could not remove the selected profiles");
+      await load();
+      return;
+    }
+    setRunningGame((current) => current && selectedTargets.some((target) => target.appid === current.appid)
+      ? { ...current, configured: false } : current);
+    await load();
+  }), [enqueueBulkProfileOperation, load, removeTargetWorkarounds, targets]);
 
   return { configFor, runningConfig, globalConfig, targets, runningGame, saveFor, updateGlobal, enable, enableAll, repair, resetFor, resetAll, bulkOperationBusy, cleanupAllWorkarounds, reload: load };
 }

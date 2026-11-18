@@ -13,6 +13,7 @@ from typing import Dict, Optional, Set
 
 from .base_service import BaseService
 from .configuration import ConfigurationService
+from .constants import FLATPAK_APP_ID_PATTERN
 
 
 class FlatpakService(BaseService):
@@ -24,10 +25,6 @@ class FlatpakService(BaseService):
     RUNTIME_METADATA_SECTION = "Extension org.freedesktop.Platform.GL"
     OWNERSHIP_FILENAME = "flatpak_state.json"
     OWNERSHIP_VERSION = 3
-    APP_ID_PATTERN = re.compile(
-        r"^[A-Za-z0-9][A-Za-z0-9-]*(?:\.[A-Za-z0-9][A-Za-z0-9-]*)+$"
-    )
-
     def __init__(self, logger=None):
         super().__init__(logger)
         self.flatpak_command: Optional[str] = None
@@ -79,7 +76,7 @@ class FlatpakService(BaseService):
 
     @classmethod
     def _validate_app_id(cls, app_id: str) -> str:
-        if not isinstance(app_id, str) or not cls.APP_ID_PATTERN.fullmatch(app_id):
+        if not isinstance(app_id, str) or not FLATPAK_APP_ID_PATTERN.fullmatch(app_id):
             raise ValueError("Invalid Flatpak application ID")
         return app_id
 
@@ -361,7 +358,17 @@ class FlatpakService(BaseService):
         for key in sorted(old_env.keys() | desired_env.keys()):
             current = [environment.get(key), key in unset]
             desired = self._override_env_value(desired_env[key]) if key in desired_env else None
-            target, change = self._managed_value(current, desired, old_env.get(key, [current, current]))
+            previous = old_env.get(key, [current, current])
+            if key == "DXVK_CONFIG" and desired is not None:
+                baseline = previous[0] if current == previous[1] else current
+                if baseline[0] and not baseline[1]:
+                    options = [
+                        segment for segment in baseline[0].split(";")
+                        if re.match(r"(?:[ \t]|\\[nrts])*dxvk\.maxFrameRate[ \t]*=", segment) is None
+                    ]
+                    options.append(desired[0])
+                    desired = ["; ".join(option.strip() for option in options if option.strip()), False]
+            target, change = self._managed_value(current, desired, previous)
             if change is not None:
                 next_env[key] = change
             value, is_unset = target

@@ -99,6 +99,36 @@ class InstallationConfigTests(unittest.TestCase):
         self.assertEqual(data["global_config"], {"dll": "", "no_fp16": False})
         self.service.log.warning.assert_called_once()
 
+    def test_uninstall_removes_matching_installed_payload_only(self):
+        self._write_config()
+        self.service.cli_file.parent.mkdir(parents=True, exist_ok=True)
+        self.service.cli_file.write_bytes(b"manual")
+        self.service._install_archive(self._archive())
+        config = self.service.config_file_path.read_bytes()
+        self.service.lib_x86_file.write_bytes(b"user replacement")
+
+        result = self.service.uninstall()
+
+        self.assertTrue(result["success"])
+        self.assertIn(str(self.service.lib_file), result["removed_files"])
+        self.assertFalse(self.service.lib_file.exists())
+        self.assertTrue(self.service.cli_file.exists())
+        self.assertEqual(self.service.lib_x86_file.read_bytes(), b"user replacement")
+        self.assertEqual(self.service.config_file_path.read_bytes(), config)
+
+    def test_installation_backs_up_an_unversioned_configuration(self):
+        self.service.config_dir.mkdir(parents=True)
+        original = b'[global]\nallow_fp16 = false\n'
+        self.service.config_file_path.write_bytes(original)
+        self._mark_installed()
+        self.assertFalse(self.service.check_installation()["installed"])
+        self.assertEqual(self.service.config_file_path.read_bytes(), original)
+
+        self.service._install_archive(self._archive())
+
+        backup = self.service.config_file_path.with_name("conf.toml.unversioned.bak")
+        self.assertEqual(backup.read_bytes(), original)
+
     def test_installation_does_not_overwrite_a_future_config_version(self):
         self.service.config_dir.mkdir(parents=True)
         original = "version = 3\n\n[global]\nallow_fp16 = true\n"

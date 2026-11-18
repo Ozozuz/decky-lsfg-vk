@@ -22,7 +22,7 @@ type FlatpakOperationResult = {
   state?: WorkaroundState | null;
 };
 
-export function useFlatpakConfiguration(enabled: boolean) {
+export function useFlatpakConfiguration(enabled: boolean, runningShortcutAppId?: string) {
   const [apps, setApps] = useState<FlatpakApp[]>([]);
   const [runningApps, setRunningApps] = useState<RunningFlatpakApp[]>([]);
   const [loading, setLoading] = useState(false);
@@ -139,15 +139,18 @@ export function useFlatpakConfiguration(enabled: boolean) {
   }, [apps, operate]);
 
   const updateConfig = useCallback(
-    async (appId: string, config: LsfgConfig) => {
-      const result = await operate(appId, () => updateFlatpakConfig(appId, config), false);
-      if (result.success) {
-        setApps((current) => current.map((app) => (
-          app.app_id === appId ? { ...app, config: result.config || config } : app
-        )));
-      }
-      return result.success;
-    },
+    async (appId: string, changes: Partial<LsfgConfig>) => (
+      await operate(appId, async () => {
+        const result = await updateFlatpakConfig(appId, changes);
+        const config = result.config;
+        if (result.success && config) {
+          setApps((current) => current.map((app) => (
+            app.app_id === appId ? { ...app, config } : app
+          )));
+        }
+        return result;
+      }, false)
+    ).success,
     [operate],
   );
   const updateWorkarounds = useCallback(
@@ -168,7 +171,7 @@ export function useFlatpakConfiguration(enabled: boolean) {
     [operate],
   );
 
-  const runningApp = useMemo(() => selectMostRecentRunningFlatpak(apps, runningApps), [apps, runningApps]);
+  const runningApp = useMemo(() => selectMostRecentRunningFlatpak(apps, runningApps, runningShortcutAppId), [apps, runningApps, runningShortcutAppId]);
 
   return {
     apps,

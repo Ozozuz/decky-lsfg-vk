@@ -81,6 +81,12 @@ class FlatpakServiceTests(unittest.TestCase):
             return self._result(path.read_text(encoding="utf-8") if path.exists() else "")
         raise AssertionError(f"Unexpected Flatpak command: {args}")
 
+    def test_valid_app_id_can_contain_underscores(self):
+        app = "io.github.doukutsu_rs.doukutsu-rs"
+        self.assertEqual(self.service._validate_app_id(app), app)
+        with self.assertRaises(ValueError):
+            self.service._validate_app_id("../io.github.doukutsu_rs")
+
     def test_resolves_freedesktop_and_derived_runtimes(self):
         runtime, branch = self.service._resolve_runtime("com.example.Game")
         self.assertEqual(runtime, self.runtime_ref)

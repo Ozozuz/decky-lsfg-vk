@@ -81,7 +81,7 @@ export function Content() {
     install,
     uninstall,
   } = useInstallation(reload, cleanupAllWorkarounds);
-  const flatpak = useFlatpakConfiguration(setupComplete);
+  const flatpak = useFlatpakConfiguration(setupComplete, runningGame?.flatpakAppId);
   const [tab, setTab] = useState("Settings");
   const [showDebugTab, setShowDebugTab] = usePersistentBoolean(DEBUG_TAB_VISIBILITY_KEY, false);
   const [contentFocused, setContentFocused] = useState(false);
@@ -164,7 +164,7 @@ export function Content() {
       game={nowPlayingTarget.game}
       config={runningConfig}
       onConfigChange={async (field, value) => {
-        await saveFor(nowPlayingTarget.game.appid, { ...runningConfig, [field]: value }, true);
+        await saveFor(nowPlayingTarget.game.appid, { [field]: value });
       }}
     />
   ) : null;
@@ -258,7 +258,9 @@ export function Content() {
       <Tabs
         activeTab={activeTab}
         onShowTab={(nextTab: string) => {
-          if (availableTabIds.has(nextTab)) setTab(nextTab);
+          if (!availableTabIds.has(nextTab)) return;
+          if (nextTab === "Flatpak" && activeTab !== "Flatpak") void flatpak.reload();
+          setTab(nextTab);
         }}
         tabs={tabs}
       />

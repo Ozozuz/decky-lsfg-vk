@@ -18,7 +18,7 @@ interface Props {
   onEnableAll: () => Promise<void>;
   onRemove: (appId: string) => Promise<boolean>;
   onRemoveAll: () => Promise<void>;
-  onConfigChange: (appId: string, config: LsfgConfig) => Promise<boolean>;
+  onConfigChange: (appId: string, config: Partial<LsfgConfig>) => Promise<boolean>;
   onWorkaroundChange: (appId: string, field: keyof WorkaroundState, value: boolean | number) => Promise<boolean>;
 }
 
@@ -200,6 +200,7 @@ export function FlatpakTab({
 
   const busy = busyAppId === selected.app_id;
   const config = selected.config;
+  const needsRuntime = selected.enabled && !selected.runtime_ready;
   const external = selected.prepared && !selected.owned;
   const profileDescription = [
     selected.app_id,
@@ -213,7 +214,7 @@ export function FlatpakTab({
     value: boolean | number | string | string[],
   ) => {
     if (!config) return;
-    await onConfigChange(selected.app_id, { ...config, [field]: value });
+    await onConfigChange(selected.app_id, { [field]: value });
   };
 
   return (
@@ -248,7 +249,7 @@ export function FlatpakTab({
           </div>
         </PanelSectionRow>
       </PanelSection>
-      {!selected.enabled && (
+      {(!selected.enabled || needsRuntime) && (
         <PanelSection>
           <PanelSectionRow>
             <ButtonItem
@@ -256,9 +257,16 @@ export function FlatpakTab({
               disabled={busy || external || Boolean(selected.error)}
               onClick={() => void onEnable(selected.app_id)}
             >
-              {busy ? "Enabling..." : external ? "Prepared externally" : "Enable LSFG-VK"}
+              {busy
+                ? needsRuntime ? "Repairing runtime..." : "Enabling..."
+                : external ? "Prepared externally" : needsRuntime ? "Repair runtime" : "Enable LSFG-VK"}
             </ButtonItem>
           </PanelSectionRow>
+          {needsRuntime && (
+            <PanelSectionRow>
+              <Field label="Runtime extension missing" description="Repair installs the extension for this app's current runtime and keeps your profile." />
+            </PanelSectionRow>
+          )}
           {selected.error && (
             <PanelSectionRow>
               <Field label="Unavailable" description={selected.error} />

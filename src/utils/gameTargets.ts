@@ -68,6 +68,10 @@ export function targetsForSource(targets: GameTarget[], source: KnownGameSource)
   return targets.filter((target) => target.source === source || (target.source === "unknown" && target.configured));
 }
 
+export function isBulkGameTarget(game: GameTarget, source: KnownGameSource): boolean {
+  return game.source === source && !game.isFlatpakShortcut;
+}
+
 export function sourceLabel(source: GameSource): string {
   if (source === "nonSteam") return "Non-Steam";
   if (source === "steam") return "Steam";

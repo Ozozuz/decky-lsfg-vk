@@ -20,10 +20,6 @@ export const ToastMessages = {
     title: "Installation Failed",
     body: "Unknown error occurred",
   },
-  UNINSTALL_SUCCESS: {
-    title: "Uninstallation Complete",
-    body: "lsfg-vk has been uninstalled successfully",
-  },
   UNINSTALL_ERROR: {
     title: "Uninstallation Failed",
     body: "Unknown error occurred",
@@ -42,9 +38,6 @@ export const showInstallSuccessToast = (): void =>
 
 export const showInstallErrorToast = (error?: string): void =>
   showErrorToast(ToastMessages.INSTALL_ERROR.title, error || ToastMessages.INSTALL_ERROR.body);
-
-export const showUninstallSuccessToast = (): void =>
-  showSuccessToast(ToastMessages.UNINSTALL_SUCCESS.title, ToastMessages.UNINSTALL_SUCCESS.body);
 
 export const showUninstallErrorToast = (error?: string): void =>
   showErrorToast(ToastMessages.UNINSTALL_ERROR.title, error || ToastMessages.UNINSTALL_ERROR.body);

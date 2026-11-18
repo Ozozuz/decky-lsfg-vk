@@ -14,7 +14,7 @@ interface ConfigurationTabProps {
   configFor: (appid: string) => ConfigurationData;
   targets: GameTarget[];
   runningGame: GameTarget | null;
-  onSave: (appid: string, config: ConfigurationData, cleanupLaunchOptions: boolean) => Promise<boolean>;
+  onSave: (appid: string, config: Partial<ConfigurationData>) => Promise<boolean>;
   onEnable: (appid: string) => Promise<boolean>;
   onEnableAll: (source: KnownGameSource) => Promise<void>;
   bulkOperationBusy: boolean;
@@ -180,7 +180,7 @@ export function ConfigurationTab({
         <GameConfigurationControls
           config={config}
           onConfigChange={async (field, value) => {
-            await onSave(detailAppId, { ...config, [field]: value }, selectedTarget.source !== "unknown");
+            await onSave(detailAppId, { [field]: value });
           }}
           autoFocusFpsMultiplier={focusFpsMultiplier}
           onFpsMultiplierFocused={clearFpsFocusRequest}

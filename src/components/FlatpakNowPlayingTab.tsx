@@ -8,7 +8,7 @@ import { NowPlayingSummary } from "./NowPlayingSummary";
 interface Props {
   app: FlatpakApp;
   launcher: GameTarget | null;
-  onConfigChange: (appId: string, config: LsfgConfig) => Promise<boolean>;
+  onConfigChange: (appId: string, config: Partial<LsfgConfig>) => Promise<boolean>;
 }
 
 export function FlatpakNowPlayingTab({ app, launcher, onConfigChange }: Props) {
@@ -17,7 +17,7 @@ export function FlatpakNowPlayingTab({ app, launcher, onConfigChange }: Props) {
     field: keyof LsfgConfig,
     value: boolean | number | string | string[],
   ) => {
-    await onConfigChange(app.app_id, { ...app.config!, [field]: value });
+    await onConfigChange(app.app_id, { [field]: value });
   };
 
   return (

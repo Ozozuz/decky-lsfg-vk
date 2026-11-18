@@ -10,7 +10,7 @@ import {
   showInstallErrorToast,
   showInstallSuccessToast,
   showUninstallErrorToast,
-  showUninstallSuccessToast,
+  showSuccessToast,
 } from "../utils/toastUtils";
 
 export function useInstallation(
@@ -106,10 +106,9 @@ export function useInstallation(
         showUninstallErrorToast(result.error ?? undefined);
         return;
       }
-      setIsInstalled(false);
-      setInstallationStatus("lsfg-vk uninstalled successfully!");
       await checkInstallation();
-      showUninstallSuccessToast();
+      setInstallationStatus(result.message || "LSFG-VK profiles kept");
+      showSuccessToast("LSFG-VK", result.message || "Profiles were kept.");
     } catch (error) {
       setInstallationStatus(`Uninstallation failed: ${error}`);
       showUninstallErrorToast(String(error));

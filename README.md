@@ -16,9 +16,11 @@ A community edition of [Decky LSFG-VK](https://github.com/xXJSONDeruloXx/decky-l
 3. In Decky, enable **Developer Mode** and choose **Developer → Install Plugin from ZIP**.
 4. Open **Decky LSFG-VK - Ozozuz's Fork** and select **Install lsfg-vk** if setup is needed. Use the **Steam**, **Non-Steam**, or **Flatpak** tab to enable frame generation for the next launch.
 
-### Upgrading from the old Decky LSFG-VK name
+### Upgrading from 0.14.4-flatpak26.08.7 or earlier
 
-In Desktop Mode, move the old plugin folder out of `~/homebrew/plugins/` and restart the Steam Deck before installing the new ZIP. Keep the folder as a backup. Moving it instead of using Decky's **Uninstall** preserves the existing LSFG-VK configuration. The two plugin names share that configuration, so use one installation at a time.
+In Desktop Mode, move the existing plugin folder out of `~/homebrew/plugins/` and restart the Steam Deck before installing the new ZIP. Depending on the installed version, the folder may be named **Decky LSFG-VK** or **Decky LSFG-VK - Ozozuz's Fork**. The older plugin's Decky uninstall action can delete profiles. Keep the moved folder as a backup and use one installation at a time.
+
+Starting with 0.14.4-flatpak26.08.8, Decky can remove or replace the plugin while preserving the LSFG-VK runtime and profiles. To remove the plugin-managed runtime, use **Uninstall LSFG-VK** inside the plugin first. That action keeps the saved profiles and preserves installation files whose ownership the plugin cannot verify.
 
 ## Feedback and credits
 

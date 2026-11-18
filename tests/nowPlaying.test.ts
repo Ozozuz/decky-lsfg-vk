@@ -58,11 +58,29 @@ test("deduplicates multiple process rows for one managed Flatpak", () => {
   assert.equal(selectMostRecentRunningFlatpak(apps, running)?.app_id, "com.heroicgameslauncher.hgl");
 });
 
-test("Flatpak runtime wins while a Steam shortcut is running", () => {
-  const target = resolveNowPlayingTarget(game(true), flatpak("org.libretro.RetroArch", "RetroArch"));
+test("a Flatpak shortcut picks its matching profile", () => {
+  const launcher = { ...game(true), isFlatpakShortcut: true, flatpakAppId: "org.libretro.RetroArch" };
+  const target = resolveNowPlayingTarget(launcher, flatpak("org.libretro.RetroArch", "RetroArch"));
+  assert.equal(resolveNowPlayingTarget(launcher, flatpak("org.example.Other")), null);
 
   assert.equal(target?.kind, "flatpak");
   assert.equal(target?.kind === "flatpak" ? target.launcher?.name : null, "1080 Snowboarding");
+});
+
+test("a standalone Non-Steam game wins over an unrelated Flatpak", () => {
+  const other = flatpak("com.heroicgameslauncher.hgl");
+  assert.equal(resolveNowPlayingTarget(game(true), other)?.kind, "nonSteam");
+  assert.equal(resolveNowPlayingTarget(game(true, false), other), null);
+});
+
+test("a known shortcut picks its app instead of a newer unrelated Flatpak", () => {
+  const apps = [flatpak("org.example.one"), flatpak("org.example.two")];
+  const running = [
+    { app_id: "org.example.one", active: true, pid: "1", start_time: 1 },
+    { app_id: "org.example.two", active: true, pid: "2", start_time: 2 },
+  ];
+  assert.equal(selectMostRecentRunningFlatpak(apps, running, "org.example.one")?.app_id, "org.example.one");
+  assert.equal(selectMostRecentRunningFlatpak([{ ...apps[0], runtime_ready: false }], running), null);
 });
 
 test("native Steam game wins over an unrelated Flatpak", () => {

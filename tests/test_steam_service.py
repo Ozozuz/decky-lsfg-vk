@@ -31,6 +31,7 @@ class SteamShortcutTests(unittest.TestCase):
             "name": "PCSX2 shortcut",
             "nonSteam": True,
             "isFlatpakShortcut": True,
+            "flatpakAppId": "net.pcsx2.PCSX2",
         })
 
     def test_bare_flatpak_shortcut_is_marked(self):
@@ -48,7 +49,25 @@ class SteamShortcutTests(unittest.TestCase):
             "name": "Faugus shortcut",
             "nonSteam": True,
             "isFlatpakShortcut": True,
+            "flatpakAppId": "io.github.Faugus.faugus-launcher",
         })
+
+    def test_flatpak_shortcut_uses_app_ref_after_options(self):
+        game = SteamService._shortcut_game({
+            "appid": 123456,
+            "AppName": "Heroic shortcut",
+            "Exe": '"/usr/bin/flatpak"',
+            "LaunchOptions": "run --file-forwarding --command org.example.Command app/com.heroicgameslauncher.hgl/x86_64/stable",
+        })
+        self.assertEqual(game["flatpakAppId"], "com.heroicgameslauncher.hgl")
+
+    def test_flatpak_shortcut_accepts_die_with_parent(self):
+        for flag in ("--die-with-parent", "-p"):
+            with self.subTest(flag=flag):
+                self.assertEqual(
+                    SteamService._flatpak_shortcut_id(["run", flag, "org.example.Game"]),
+                    "org.example.Game",
+                )
 
     def test_emudeck_launcher_is_ordinary_non_steam_metadata(self):
         game = SteamService._shortcut_game(

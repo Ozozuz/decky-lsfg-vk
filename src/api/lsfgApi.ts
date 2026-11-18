@@ -42,6 +42,7 @@ export interface InstalledGame {
   name: string;
   nonSteam: boolean;
   isFlatpakShortcut?: boolean;
+  flatpakAppId?: string;
 }
 
 export interface GlobalConfig {
@@ -89,6 +90,7 @@ export interface GlobalConfigResult extends ApiResult {
 }
 
 export interface GameConfigResult extends ApiResult {
+  profile?: string;
   appid?: string;
   exists?: boolean;
   config?: LsfgConfig;
@@ -157,13 +159,13 @@ export const getLosslessScalingBranchStatus = callable<[], SteamBranchStatus>("g
 export const getConfigFileContent = callable<[], FileContentResult>("get_config_file_content");
 export const getFlatpakApps = callable<[], FlatpakAppsResult>("get_flatpak_apps");
 export const enableFlatpakApp = callable<[string], FlatpakAppResult>("enable_flatpak_app");
-export const updateFlatpakConfig = callable<[string, LsfgConfig], FlatpakAppResult>("update_flatpak_config");
+export const updateFlatpakConfig = callable<[string, Partial<LsfgConfig>], FlatpakAppResult>("update_flatpak_config");
 export const setFlatpakWorkaroundState = callable<[string, Partial<WorkaroundState>], WorkaroundStateResult>("set_flatpak_workaround_state");
 export const removeFlatpakApp = callable<[string], FlatpakAppResult>("remove_flatpak_app");
 export const getRunningFlatpakApps = callable<[], RunningFlatpakAppsResult>("get_running_flatpak_apps");
 export const getGameConfigs = callable<[], GameConfigsResult>("get_game_configs");
 export const getInstalledGames = callable<[], InstalledGamesResult>("get_installed_games");
-export const updateGameConfig = callable<[string, string, LsfgConfig], GameConfigResult>("update_game_config");
+export const updateGameConfig = callable<[string, string, Partial<LsfgConfig>, boolean?], GameConfigResult>("update_game_config");
 export const resetGameConfig = callable<[string], GameConfigResult>("reset_game_config");
 export const resetGameConfigs = callable<[string[]], GameConfigsResult>("reset_game_configs");
 export const resetAllGameConfigs = callable<[], GameConfigsResult>("reset_all_game_configs");
