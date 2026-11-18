@@ -1,55 +1,30 @@
-# Decky LSFG-VK
+# Decky LSFG-VK - Ozozuz's Fork
 
-> This is an **unofficial community plugin**. It is independently developed and **not officially supported** by the creators of Lossless Scaling or lsfg-vk. For support, please use the [decky-lsfg-vk Discord Channel](https://discord.gg/TwvHdVucC3).
+A community edition of [Decky LSFG-VK](https://github.com/xXJSONDeruloXx/decky-lsfg-vk), maintained by [Ozozuz](https://github.com/Ozozuz). It brings Lossless Scaling frame generation to Steam Deck through Decky Loader and the upstream [lsfg-vk Vulkan layer](https://lsfg-vk.dev/).
 
+## What's different
 
-<p align="center">
-   <img src="assets/decky-lossless-logo.png" alt="decky-lsfg-vk Logo" width="200"/>
-</p>
-<p align="center">
-   <a href="https://ko-fi.com/B0B71HZTAX" target="_blank" rel="noopener noreferrer">
-      <img src="https://ko-fi.com/img/githubbutton_sm.svg" alt="Support on Ko-fi"/>
-   </a>
-</p>
+- **Flatpak support** for Freedesktop 24.08, 25.08, and 26.08, including compatible GNOME and KDE runtimes. The plugin sets up user-level Flathub when needed, reuses existing extensions, and preserves unrelated Flatpak overrides.
+- **Base FPS Cap** sits next to the frame generation multiplier. It limits the game's original FPS in DXVK and VKD3D-Proton titles. Restart the game after changing it, or restart the launcher for Flatpak titles.
+- **Deck navigation and profiles** make Flatpak profiles easier to browse and keep edits tied to the profile you opened. Flatpak apps can also be enabled in bulk.
+- **Safer installation** validates the bundled files and configuration before replacing an existing installation.
 
+## Install
 
-Decky LSFG-VK is a Decky plugin that streamlines the installation of **lsfg-vk** ([Lossless Scaling Frame Generation Vulkan layer](https://lsfg-vk.dev/)) on Steam Deck, allowing you to use the Lossless Scaling frame generation features on Linux with a controller friendly UI in SteamOS, Bazzite, or any other Linux platform compatible with Decky Loader.
+1. In Steam, install [Lossless Scaling](https://store.steampowered.com/app/993090/Lossless_Scaling/) and select the **lsfg-vk** branch under **Properties → Game Versions & Betas**.
+2. Download the plugin ZIP from [Ozozuz's GitHub Releases](https://github.com/Ozozuz/decky-lsfg-vk/releases).
+3. In Decky, enable **Developer Mode** and choose **Developer → Install Plugin from ZIP**.
+4. Open **Decky LSFG-VK - Ozozuz's Fork** and select **Install lsfg-vk** if setup is needed. Use the **Steam**, **Non-Steam**, or **Flatpak** tab to enable frame generation for the next launch.
 
-## Installation
+### Upgrading from the old Decky LSFG-VK name
 
-1. **Download the plugin** from the [releases tab](https://github.com/xXJSONDeruloXx/decky-lsfg-vk/releases)
-   - Download the "Decky LSFG-VK.zip" file to your Steam Deck
-2. **Install manually through Decky**:
-   - In Game Mode, go to the settings cog in the top right of the Decky Loader tab
-   - Enable "Developer Mode"
-   - Go to "Developer" tab and select "Install Plugin from Zip"
-   - Select the downloaded "Decky LSFG-VK.zip" file
+In Desktop Mode, move the old plugin folder out of `~/homebrew/plugins/` and restart the Steam Deck before installing the new ZIP. Keep the folder as a backup. Moving it instead of using Decky's **Uninstall** preserves the existing LSFG-VK configuration. The two plugin names share that configuration, so use one installation at a time.
 
-## How to Use
+## Feedback and credits
 
-1. **Purchase and install** [Lossless Scaling](https://store.steampowered.com/app/993090/Lossless_Scaling/) from Steam
-2. **Switch Branch** In the Lossless Scaling Steam app, go to Properties > Game Versions & Betas > select "lsfg-vk" branch, and let Steam download the new version
-2. **Open the plugin** from the Decky menu
-3. **Click "Install lsfg-vk"** to automatically set up the lsfg-vk vulkan layer
-4. **Configure settings** using the plugin's UI - select Default or a running/configured game and adjust the upstream lsfg-vk settings
-5. **Configure Flatpak apps** in the Flatpak tab individually or with **Enable all** and **Remove all profiles**
-6. **Launch your game** - frame generation activates when the game's Steam AppID matches an assigned upstream profile
+Report fork-specific bugs in [GitHub Issues](https://github.com/Ozozuz/decky-lsfg-vk/issues). The [upstream Discord](https://discord.gg/TwvHdVucC3) hosts discussion about the original plugin.
 
-### Core Settings
-
-- **FPS Multiplier**: Choose 2x, 3x, or 4x frame generation
-- **Flow Scale**: Adjust motion estimation quality (lower = better performance, higher = better quality)
-- **Performance Mode**: Uses a lighter processing model (recommended for most games)
-- **FP16 Acceleration**: Use half-precision acceleration when supported
-
-## Feedback and Support
-
-For per-game feedback and community support, please join the [decky-lsfg-vk Discord Channel](https://discord.gg/TwvHdVucC3)
-
-## Credits
-
-- **[PancakeTAS](https://lsfg-vk.dev/)** for creating the lsfg-vk Vulkan compatibility layer
-- **[Lossless Scaling](https://store.steampowered.com/app/993090/Lossless_Scaling/)** developers for the original frame generation technology
-- **[Deck Wizard](https://www.youtube.com/@DeckWizard)**  - Extensive community support including comprehensive guides, promotional content, thorough testing and feedback, custom artworks, and tutorial videos. His passionate advocacy and continuous support have been instrumental in this plugin's success.
-- The **Decky Loader** team for the plugin framework
-- Community contributors and testers for feedback and bug reports
+- [Kurt Himebauch (xXJSONDeruloXx)](https://github.com/xXJSONDeruloXx) created the original Decky plugin.
+- [PancakeTAS](https://lsfg-vk.dev/) created the lsfg-vk Vulkan layer.
+- The Lossless Scaling developers created the original frame generation technology.
+- [Deck Wizard](https://www.youtube.com/@DeckWizard), the Decky Loader team, and community contributors provided testing, guides, and support.

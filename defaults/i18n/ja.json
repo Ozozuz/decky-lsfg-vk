@@ -9,7 +9,7 @@
   "CONFIG_FLOW_SCALE_DESC": "内部モーション推定解像度を下げて、パフォーマンスをわずかに向上させます",
   "CONFIG_BASE_FPS_CAP": "基本FPS上限",
   "CONFIG_BASE_FPS_CAP_OFF": "オフ",
-  "CONFIG_BASE_FPS_CAP_DESC": "フレーム生成前のDXVKゲームの基本上限。0で無効。ゲームの再起動が必要です。",
+  "CONFIG_BASE_FPS_CAP_DESC": "DXVKとVKD3D-Protonのゲームで、フレーム生成前の実FPSを制限します。0で無効。適用には再起動が必要です。",
   "CONFIG_PRESENT_MODE": "プレゼンテーションモード",
   "CONFIG_PRESENT_MODE_FIFO": "FIFO - VSync",
   "CONFIG_PRESENT_MODE_MAILBOX": "Mailbox",

@@ -9,7 +9,7 @@
   "CONFIG_FLOW_SCALE_DESC": "Lowers internal motion estimation resolution, improving performance slightly",
   "CONFIG_BASE_FPS_CAP": "Base FPS Cap",
   "CONFIG_BASE_FPS_CAP_OFF": "Off",
-  "CONFIG_BASE_FPS_CAP_DESC": "Base cap for DXVK-backed games before frame generation; 0 disables. Requires game restart to apply.",
+  "CONFIG_BASE_FPS_CAP_DESC": "Limits real FPS before frame generation in DXVK and VKD3D-Proton games. 0 disables the plugin cap. Restart the game to apply.",
   "CONFIG_PRESENT_MODE": "Present Mode",
   "CONFIG_PRESENT_MODE_FIFO": "FIFO - VSync",
   "CONFIG_PRESENT_MODE_MAILBOX": "Mailbox",

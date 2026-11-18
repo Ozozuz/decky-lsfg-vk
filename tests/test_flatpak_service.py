@@ -33,6 +33,7 @@ class FlatpakServiceTests(unittest.TestCase):
         self.user_branches = set()
         self.system_branches = set()
         self.user_extension_origin = "flathub"
+        self.deployments = self.home / "deployments"
         self.user_remotes = {"flathub"}
         self.apps = {"com.example.Game": "Example Game"}
         self.dll_dir = self.home / ".local/share/Steam/steamapps/common/Lossless Scaling"
@@ -49,71 +50,6 @@ class FlatpakServiceTests(unittest.TestCase):
     def _extension_line(branch):
         return f"org.freedesktop.Platform.VulkanLayer.lsfgvk\tx86_64\t{branch}\n"
 
-    @staticmethod
-    def _parse_override(content):
-        section = None
-        filesystems = []
-        unset_environment = []
-        environment = {}
-        other = []
-        for raw in content.splitlines():
-            line = raw.strip()
-            if line.startswith("[") and line.endswith("]"):
-                section = line[1:-1]
-                continue
-            key, separator, value = line.partition("=")
-            if not separator:
-                continue
-            if section == "Context" and key == "filesystems":
-                filesystems.extend(item for item in value.split(";") if item)
-            elif section == "Context" and key == "unset-environment":
-                unset_environment.extend(item for item in value.split(";") if item)
-            elif section == "Environment":
-                environment[key] = value
-            else:
-                other.append((section, key, value))
-        return filesystems, unset_environment, environment, other
-
-    @staticmethod
-    def _serialize_override(filesystems, unset_environment, environment):
-        lines = ["[Context]"]
-        if filesystems:
-            lines.append("filesystems=" + ";".join(filesystems) + ";")
-        if unset_environment:
-            lines.append("unset-environment=" + ";".join(unset_environment) + ";")
-        if environment:
-            lines.append("")
-            lines.append("[Environment]")
-            lines.extend(f"{key}={value}" for key, value in environment.items())
-        return "\n".join(lines) + "\n"
-
-    def _apply_override(self, args):
-        app_id = args[-1]
-        path = self.service._override_path(app_id)
-        content = path.read_text(encoding="utf-8") if path.exists() else ""
-        filesystems, unset_environment, environment, _ = self._parse_override(content)
-        for arg in args[2:-1]:
-            if arg.startswith("--filesystem="):
-                value = arg.split("=", 1)[1]
-                if value not in filesystems:
-                    filesystems.append(value)
-            elif arg.startswith("--env="):
-                key, value = arg.split("=", 1)[1].split("=", 1)
-                environment[key] = value
-                if key in unset_environment:
-                    unset_environment.remove(key)
-            elif arg.startswith("--unset-env="):
-                key = arg.split("=", 1)[1]
-                environment.pop(key, None)
-                if key not in unset_environment:
-                    unset_environment.append(key)
-        path.parent.mkdir(parents=True, exist_ok=True)
-        path.write_text(
-            self._serialize_override(filesystems, unset_environment, environment),
-            encoding="utf-8",
-        )
-        return self._result()
-
     def _run_flatpak_command(self, args, **_kwargs):
         if args == ["remotes", "--user", "--columns=name"]:
             return self._result("\n".join(sorted(self.user_remotes)))
@@ -125,14 +61,17 @@ class FlatpakServiceTests(unittest.TestCase):
         if args[:2] == ["info", "--show-metadata"]:
             return self._result(self.runtime_metadata)
         if args[:3] == ["info", "--user", "--show-origin"]:
-            return self._result(self.user_extension_origin)
+            branch = args[-1].rsplit("/", 1)[-1]
+            return self._result(f"{self.user_extension_origin} {self.deployments / branch}")
         if args[:2] == ["list", "--app"]:
             return self._result("".join(f"{name}\t{app_id}\n" for app_id, name in self.apps.items()))
         if args[0] == "list":
             branches = self.user_branches if "--user" in args else self.system_branches
             return self._result("".join(self._extension_line(branch) for branch in sorted(branches)))
         if args[0] == "install":
-            self.user_branches.add(args[-1].rsplit("/", 1)[-1])
+            branch = args[-1].rsplit("/", 1)[-1]
+            self.user_branches.add(branch)
+            (self.deployments / branch).mkdir(parents=True, exist_ok=True)
             return self._result()
         if args[0] == "uninstall":
             self.user_branches.discard(args[-1].rsplit("/", 1)[-1])
@@ -140,11 +79,6 @@ class FlatpakServiceTests(unittest.TestCase):
         if args[:3] == ["override", "--user", "--show"]:
             path = self.service._override_path(args[-1])
             return self._result(path.read_text(encoding="utf-8") if path.exists() else "")
-        if args[:3] == ["override", "--user", "--reset"]:
-            self.service._override_path(args[-1]).unlink(missing_ok=True)
-            return self._result()
-        if args[:2] == ["override", "--user"]:
-            return self._apply_override(args)
         raise AssertionError(f"Unexpected Flatpak command: {args}")
 
     def test_resolves_freedesktop_and_derived_runtimes(self):
@@ -216,14 +150,14 @@ class FlatpakServiceTests(unittest.TestCase):
         self.assertEqual(response["runtime_branch"], "26.08")
         self.service._run_flatpak_command.assert_any_call(
             [
-                "install", "--user", "--noninteractive", "--or-update", "flathub",
+                "install", "--user", "--noninteractive", "flathub",
                 "org.freedesktop.Platform.VulkanLayer.lsfgvk//26.08",
             ],
             capture_output=True, text=True,
         )
         self.assertEqual(self.user_branches, {"24.08", "26.08"})
         state = json.loads(self.service.ownership_path.read_text(encoding="utf-8"))
-        self.assertEqual(state["plugin_owned_branches"], ["26.08"])
+        self.assertEqual(set(state["plugin_owned_branches"]), {"26.08"})
 
         response = self.service.remove_plugin_owned_environment()
 
@@ -300,7 +234,7 @@ class FlatpakServiceTests(unittest.TestCase):
 
     def test_remote_setup_failure_preserves_existing_extension_and_overrides(self):
         self.user_remotes = set()
-        self.user_branches = {"24.08"}
+        self.user_branches = {"25.08"}
         self.user_extension_origin = "lsfgvk-origin"
         path = self.service._override_path("com.example.Game")
         path.parent.mkdir(parents=True, exist_ok=True)
@@ -319,7 +253,7 @@ class FlatpakServiceTests(unittest.TestCase):
         self.assertFalse(response["success"])
         self.assertIn("Could not configure Flathub", response["error"])
         self.assertIn("Network unavailable", response["error"])
-        self.assertEqual(self.user_branches, {"24.08"})
+        self.assertEqual(self.user_branches, {"25.08"})
         self.assertEqual(path.read_text(encoding="utf-8"), original)
         self.assertFalse(self.service.ownership_path.exists())
         commands = [call.args[0] for call in self.service._run_flatpak_command.call_args_list]
@@ -359,7 +293,6 @@ class FlatpakServiceTests(unittest.TestCase):
                 "install",
                 "--user",
                 "--noninteractive",
-                "--or-update",
                 "flathub",
                 "org.freedesktop.Platform.VulkanLayer.lsfgvk//24.08",
             ]],
@@ -373,8 +306,8 @@ class FlatpakServiceTests(unittest.TestCase):
         self.assertIn("LSFGVK_FLATPAK=1", content)
         self.assertNotIn("ENABLE_GAMESCOPE_WSI", content)
         state = json.loads(self.service.ownership_path.read_text(encoding="utf-8"))
-        self.assertEqual(state["plugin_owned_branches"], ["24.08"])
-        self.assertEqual(state["prepared_apps"]["com.example.Game"], {})
+        self.assertEqual(set(state["plugin_owned_branches"]), {"24.08"})
+        self.assertIn("override_changes", state["prepared_apps"]["com.example.Game"])
 
     def test_prepare_is_idempotent(self):
         first = self.service.prepare_app("com.example.Game")
@@ -387,24 +320,35 @@ class FlatpakServiceTests(unittest.TestCase):
         install_calls = [call for call in self.service._run_flatpak_command.call_args_list if call.args[0][0] == "install"]
         self.assertEqual(len(install_calls), 1)
 
-    def test_replaces_extension_from_another_remote(self):
+    def test_preserves_preinstalled_user_extension_regardless_of_origin(self):
         self.user_branches = {"24.08"}
-        self.user_extension_origin = "lsfgvk-origin"
-
-        response = self.service.install_extension("24.08")
-
-        self.assertTrue(response["success"])
+        self.user_remotes = set()
+        for origin in ("flathub", "lsfgvk-origin"):
+            with self.subTest(origin=origin):
+                self.user_extension_origin = origin
+                self.assertTrue(self.service.install_extension("24.08")["success"])
+                response = self.service.uninstall_extension("24.08")
+                self.assertTrue(response["installed"])
+                self.assertFalse(response["removed"])
         commands = [call.args[0] for call in self.service._run_flatpak_command.call_args_list]
-        self.assertIn(
-            [
-                "uninstall",
-                "--user",
-                "--noninteractive",
-                "org.freedesktop.Platform.VulkanLayer.lsfgvk/x86_64/24.08",
-            ],
-            commands,
-        )
-        self.assertEqual(self.user_branches, {"24.08"})
+        self.assertFalse(any(args[0] in ("install", "uninstall", "remote-add") for args in commands))
+
+    def test_install_rechecks_after_external_uninstall(self):
+        self.assertTrue(self.service.install_extension("24.08")["success"])
+        self.user_branches.clear()
+        response = self.service.install_extension("24.08")
+        self.assertTrue(response["installed"])
+        self.assertIn("24.08", self.user_branches)
+        install_calls = [call for call in self.service._run_flatpak_command.call_args_list if call.args[0][0] == "install"]
+        self.assertEqual(len(install_calls), 2)
+
+    def test_cleanup_cannot_remove_replaced_deployment(self):
+        self.assertTrue(self.service.install_extension("24.08")["success"])
+        (self.deployments / "24.08").rename(self.deployments / "previous")
+        (self.deployments / "24.08").mkdir()
+        response = self.service.uninstall_extension("24.08")
+        self.assertTrue(response["installed"])
+        self.assertFalse(response["removed"])
 
     def test_preinstalled_runtime_is_not_owned(self):
         self.system_branches = {"24.08"}
@@ -412,10 +356,10 @@ class FlatpakServiceTests(unittest.TestCase):
 
         self.assertTrue(response["success"])
         state = json.loads(self.service.ownership_path.read_text(encoding="utf-8"))
-        self.assertEqual(state["plugin_owned_branches"], [])
+        self.assertEqual(state["plugin_owned_branches"], {})
         self.assertIn("com.example.Game", state["prepared_apps"])
 
-    def test_prepare_resets_existing_override(self):
+    def test_prepare_preserves_existing_override(self):
         self.system_branches = {"24.08"}
         path = self.service._override_path("com.example.Game")
         path.parent.mkdir(parents=True, exist_ok=True)
@@ -426,8 +370,8 @@ class FlatpakServiceTests(unittest.TestCase):
 
         self.assertTrue(response["success"])
         self.assertTrue(response["owned"])
-        self.assertNotIn("~/Documents", content)
-        self.assertNotIn("FOO=bar", content)
+        self.assertIn("~/Documents", content)
+        self.assertIn("FOO=bar", content)
         self.assertIn("LSFGVK_CONFIG=", content)
 
     def test_remove_deletes_override_created_by_plugin(self):
@@ -442,7 +386,7 @@ class FlatpakServiceTests(unittest.TestCase):
         self.assertFalse(path.exists())
         self.assertFalse(self.service.ownership_path.exists())
 
-    def test_remove_resets_external_changes(self):
+    def test_remove_preserves_external_changes(self):
         self.system_branches = {"24.08"}
         self.assertTrue(self.service.prepare_app("com.example.Game")["success"])
         path = self.service._override_path("com.example.Game")
@@ -452,20 +396,24 @@ class FlatpakServiceTests(unittest.TestCase):
         response = self.service.remove_app_override("com.example.Game")
 
         self.assertTrue(response["success"])
-        self.assertFalse(path.exists())
+        content = path.read_text(encoding="utf-8")
+        self.assertIn("EXTERNAL=1", content)
+        self.assertNotIn("LSFGVK_CONFIG", content)
         self.assertFalse(self.service.ownership_path.exists())
 
     def test_legacy_ownership_fields_are_accepted(self):
         self.service.ownership_path.write_text(
             json.dumps({
                 "version": 2,
-                "plugin_owned_branches": [],
+                "plugin_owned_branches": ["24.08"],
                 "prepared_apps": {"com.example.Game": {"override_existed": True, "managed_sha256": "old"}},
             }),
             encoding="utf-8",
         )
 
-        self.assertIn("com.example.Game", self.service._read_state()["prepared_apps"])
+        state = self.service._read_state()
+        self.assertIn("com.example.Game", state["prepared_apps"])
+        self.assertEqual(state["plugin_owned_branches"], {})
 
     def test_full_cleanup_removes_only_owned_state(self):
         self.system_branches = {"23.08"}

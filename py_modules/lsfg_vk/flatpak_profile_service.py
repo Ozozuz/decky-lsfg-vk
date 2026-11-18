@@ -59,108 +59,43 @@ class FlatpakProfileService:
             raise RuntimeError("Flatpak application is not owned by this plugin")
         return state, entry
 
-    @staticmethod
-    def _environment_value(content: str, key: str) -> str:
-        section = None
-        for raw_line in content.splitlines():
-            line = raw_line.strip()
-            if line.startswith("[") and line.endswith("]"):
-                section = line[1:-1]
-                continue
-            if section != "Environment":
-                continue
-            name, separator, value = line.partition("=")
-            if separator and name == key:
-                return value
-        return ""
-
-    @staticmethod
-    def _dxvk_config(frame_rate: int) -> str:
-        return f"dxvk.maxFrameRate = {frame_rate}" if frame_rate > 0 else ""
-
-    def _apply_state(self, app_id: str, workaround_state: Dict[str, Any]) -> Dict[str, Any]:
-        workaround_state = self._validate_state(workaround_state)
-        self._state_entry(app_id)
-        self.flatpak_service._reset_app_override(app_id)
-        prepared = self.flatpak_service.prepare_app(app_id)
-        if not prepared.get("success") or not prepared.get("owned"):
-            raise RuntimeError(prepared.get("error") or "Could not restore plugin-owned Flatpak preparation")
-        profile = self.configuration_service.flatpak_profile_name(app_id)
-        args = [
-            "override",
-            "--user",
-            f"--env=LSFGVK_PROFILE={profile}",
-            "--unset-env=DISABLE_LSFGVK",
-            "--unset-env=DISABLE_LSFG",
-        ]
-        if workaround_state["disableGamescopeWsi"]:
-            args.extend(["--env=ENABLE_GAMESCOPE_WSI=0", "--unset-env=DISABLE_GAMESCOPE_WSI"])
-        if workaround_state["disableHdr"]:
-            args.append("--env=DXVK_HDR=0")
-        if workaround_state["disableSteamdeckMode"]:
-            args.append("--env=SteamDeck=0")
-        if workaround_state["disableVkbasalt"]:
-            args.extend(["--env=DISABLE_VKBASALT=1", "--unset-env=ENABLE_VKBASALT"])
-        if workaround_state["enableZink"]:
-            args.extend([
-                "--env=__GLX_VENDOR_LIBRARY_NAME=mesa",
-                "--env=MESA_LOADER_DRIVER_OVERRIDE=zink",
-                "--env=GALLIUM_DRIVER=zink",
-            ])
-        dxvk_config = self._dxvk_config(workaround_state["dxvkFrameRate"])
-        if dxvk_config:
-            args.append(f"--env=DXVK_CONFIG={dxvk_config}")
-        args.append(app_id)
-        result = self.flatpak_service._run_flatpak_command(args, capture_output=True, text=True)
-        if result.returncode != 0:
-            raise OSError(result.stderr.strip() or f"Could not apply Flatpak workarounds for {app_id}")
-        state = self.flatpak_service._read_state()
-        entry = state["prepared_apps"].get(app_id)
-        if not isinstance(entry, dict):
-            raise RuntimeError("Flatpak application ownership state disappeared")
-        entry["workaround_state"] = workaround_state
-        self.flatpak_service._write_state(state)
-        return workaround_state
-
     def enable_app(self, app_id: str) -> Dict[str, Any]:
         created_profile = False
-        newly_owned = False
-        try:
-            existing = self.configuration_service.get_flatpak_config(app_id)
-            before = self.flatpak_service._read_state()
-            was_owned = app_id in before["prepared_apps"]
-            prepared = self.flatpak_service.prepare_app(app_id)
-            if not prepared.get("success"):
-                raise RuntimeError(prepared.get("error") or "Could not prepare Flatpak application")
-            if not prepared.get("owned"):
-                raise RuntimeError("Flatpak application is prepared outside this plugin and cannot be managed safely")
-            newly_owned = not was_owned
-            if not existing.get("exists"):
-                config = {
-                    **self.configuration_service._public_config({}),
-                    **(existing.get("global_config") or {}),
+        with self.flatpak_service._lock:
+            try:
+                self.flatpak_service._validate_app_id(app_id)
+                existing = self.configuration_service.get_flatpak_config(app_id)
+                if not existing.get("success"):
+                    raise RuntimeError(existing.get("error") or "Could not read Flatpak profile")
+                state = self.flatpak_service._read_state()
+                entry = state["prepared_apps"].get(app_id, {})
+                workarounds = self._validate_state(entry.get("workaround_state", self.default_state()))
+                if not existing.get("exists"):
+                    config = {
+                        **self.configuration_service._public_config({}),
+                        **(existing.get("global_config") or {}),
+                        "active_in": [],
+                    }
+                    saved = self.configuration_service.update_flatpak_config(app_id, config)
+                    if not saved.get("success"):
+                        raise RuntimeError(saved.get("error") or "Could not create Flatpak profile")
+                    created_profile = True
+                prepared = self.flatpak_service.prepare_app(app_id, workarounds)
+                if not prepared.get("success") or not prepared.get("owned"):
+                    raise RuntimeError(prepared.get("error") or "Could not prepare Flatpak application")
+                return {**prepared, "enabled": True, "workarounds": workarounds}
+            except Exception as error:
+                if created_profile:
+                    reset = self.configuration_service.reset_flatpak_config(app_id)
+                    if not reset.get("success"):
+                        error = RuntimeError(f"{error}. Could not roll back Flatpak profile: {reset.get('error')}")
+                return {
+                    "success": False,
+                    "message": "",
+                    "error": str(error),
+                    "app_id": str(app_id),
+                    "enabled": False,
                 }
-                config["active_in"] = []
-                saved = self.configuration_service.update_flatpak_config(app_id, config)
-                if not saved.get("success"):
-                    raise RuntimeError(saved.get("error") or "Could not create Flatpak profile")
-                created_profile = True
-            _, entry = self._state_entry(app_id)
-            workaround_state = self._validate_state(entry.get("workaround_state", self.default_state()))
-            self._apply_state(app_id, workaround_state)
-            return self.get_app(app_id)
-        except Exception as error:
-            if created_profile:
-                self.configuration_service.reset_flatpak_config(app_id)
-            if newly_owned:
-                self.flatpak_service.remove_app_override(app_id)
-            return {
-                "success": False,
-                "message": "",
-                "error": str(error),
-                "app_id": str(app_id),
-                "enabled": False,
-            }
 
     def update_config(self, app_id: str, config: Dict[str, Any]) -> Dict[str, Any]:
         try:
@@ -200,7 +135,16 @@ class FlatpakProfileService:
 
     def set_workaround_state(self, app_id: str, workaround_state: Dict[str, Any]) -> Dict[str, Any]:
         try:
-            state = self._apply_state(app_id, workaround_state)
+            self.flatpak_service._validate_app_id(app_id)
+            with self.flatpak_service._lock:
+                if not isinstance(workaround_state, dict) or any(key not in self.STATE_FIELDS for key in workaround_state):
+                    raise ValueError("Invalid workaround state")
+                ownership, entry = self._state_entry(app_id)
+                state = self._validate_state({
+                    **entry.get("workaround_state", self.default_state()),
+                    **workaround_state,
+                })
+                self.flatpak_service._update_app_override(app_id, ownership, workarounds=state)
             return {
                 "success": True,
                 "message": "",
@@ -218,49 +162,40 @@ class FlatpakProfileService:
             }
 
     def remove_app(self, app_id: str) -> Dict[str, Any]:
-        try:
-            removed = self.flatpak_service.remove_app_override(app_id)
-            if not removed.get("success"):
-                raise RuntimeError(removed.get("error") or "Could not remove Flatpak preparation")
-            reset = self.configuration_service.reset_flatpak_config(app_id)
-            if not reset.get("success"):
-                raise RuntimeError(reset.get("error") or "Could not remove Flatpak profile")
-            return {
-                "success": True,
-                "message": "Flatpak profile removed",
-                "error": None,
-                "app_id": app_id,
-                "enabled": False,
-            }
-        except Exception as error:
-            return {
-                "success": False,
-                "message": "",
-                "error": str(error),
-                "app_id": str(app_id),
-                "enabled": True,
-            }
-
-    def get_app(self, app_id: str) -> Dict[str, Any]:
-        apps = self.get_apps()
-        if not apps.get("success"):
-            return {
-                "success": False,
-                "message": "",
-                "error": apps.get("error"),
-                "app_id": str(app_id),
-                "enabled": False,
-            }
-        app = next((item for item in apps.get("apps", []) if item.get("app_id") == app_id), None)
-        if app is None:
-            return {
-                "success": False,
-                "message": "",
-                "error": "Flatpak application is not installed",
-                "app_id": str(app_id),
-                "enabled": False,
-            }
-        return {"success": True, "message": "", "error": None, **app}
+        with self.flatpak_service._lock:
+            previous = None
+            try:
+                self.flatpak_service._validate_app_id(app_id)
+                config = self.configuration_service.get_flatpak_config(app_id)
+                if not config.get("success"):
+                    raise RuntimeError(config.get("error") or "Could not read Flatpak profile")
+                if config.get("exists"):
+                    reset = self.configuration_service.reset_flatpak_config(app_id)
+                    if not reset.get("success"):
+                        raise RuntimeError(reset.get("error") or "Could not remove Flatpak profile")
+                    previous = config["config"]
+                removed = self.flatpak_service.remove_app_override(app_id)
+                if not removed.get("success"):
+                    raise RuntimeError(removed.get("error") or "Could not remove Flatpak preparation")
+                return {
+                    "success": True,
+                    "message": "Flatpak profile removed",
+                    "error": None,
+                    "app_id": app_id,
+                    "enabled": False,
+                }
+            except Exception as error:
+                if previous is not None:
+                    restored = self.configuration_service.update_flatpak_config(app_id, previous)
+                    if not restored.get("success"):
+                        error = RuntimeError(f"{error}. Could not restore Flatpak profile: {restored.get('error')}")
+                return {
+                    "success": False,
+                    "message": "",
+                    "error": str(error),
+                    "app_id": str(app_id),
+                    "enabled": True,
+                }
 
     def get_apps(self) -> Dict[str, Any]:
         try:
@@ -277,14 +212,7 @@ class FlatpakProfileService:
                 if isinstance(entry, dict):
                     workarounds = self._validate_state(entry.get("workaround_state", workarounds))
                 profile = self.configuration_service.flatpak_profile_name(app_id)
-                selector_ready = False
-                if item.get("prepared"):
-                    shown = self.flatpak_service._run_flatpak_command(
-                        ["override", "--user", "--show", app_id],
-                        capture_output=True,
-                        text=True,
-                    )
-                    selector_ready = shown.returncode == 0 and f"LSFGVK_PROFILE={profile}" in shown.stdout.splitlines()
+                selector_ready = item.pop("profile_selector", None) == profile and item.get("prepared")
                 apps.append({
                     **item,
                     "profile": profile,
@@ -304,22 +232,8 @@ class FlatpakProfileService:
     def get_running_apps(self) -> Dict[str, Any]:
         try:
             state = self.flatpak_service._read_state()
-            enabled = set()
-            for app_id, entry in state["prepared_apps"].items():
-                if not isinstance(entry, dict):
-                    continue
-                config = self.configuration_service.get_flatpak_config(app_id)
-                if not config.get("exists"):
-                    continue
-                shown = self.flatpak_service._run_flatpak_command(
-                    ["override", "--user", "--show", app_id],
-                    capture_output=True,
-                    text=True,
-                )
-                profile = self.configuration_service.flatpak_profile_name(app_id)
-                if shown.returncode == 0 and self._environment_value(shown.stdout, "LSFGVK_PROFILE") == profile:
-                    enabled.add(app_id)
-            if not enabled:
+            owned = state["prepared_apps"]
+            if not owned:
                 return {"success": True, "message": "", "error": None, "apps": []}
             result = self.flatpak_service._run_flatpak_command(
                 ["ps", "--columns=application,active,pid"],
@@ -329,9 +243,20 @@ class FlatpakProfileService:
             if result.returncode != 0:
                 raise OSError(result.stderr.strip() or "Could not inspect running Flatpak applications")
             running = []
+            enabled = {}
             for line in result.stdout.splitlines():
                 fields = line.split("\t") if "\t" in line else line.split()
-                if not fields or fields[0] not in enabled:
+                if not fields or fields[0] not in owned:
+                    continue
+                app_id = fields[0]
+                if app_id not in enabled:
+                    config = self.configuration_service.get_flatpak_config(app_id)
+                    enabled[app_id] = bool(
+                        config.get("exists")
+                        and self.flatpak_service._app_override_status(app_id)["profile_selector"]
+                        == self.configuration_service.flatpak_profile_name(app_id)
+                    )
+                if not enabled[app_id]:
                     continue
                 active = len(fields) > 1 and fields[1].strip().lower() in {"1", "true", "yes", "active"}
                 running.append({

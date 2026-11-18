@@ -90,8 +90,14 @@ class Plugin:
         state: Dict[str, Any],
         command_token_added: bool = False,
         non_steam: bool = False,
+        preserve_existing: bool = False,
     ):
-        return self.wrapper_service.set(appid, state, command_token_added, non_steam)
+        return self.wrapper_service.set(
+            appid, state, command_token_added, non_steam, preserve_existing=preserve_existing
+        )
+
+    async def update_workaround_state(self, appid: str, changes: Dict[str, Any]):
+        return self.wrapper_service.set(appid, changes, patch=True)
 
     async def remove_workaround_state(self, appid: str):
         return self.wrapper_service.remove(appid)

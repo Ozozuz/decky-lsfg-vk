@@ -1,8 +1,9 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import {
   getWorkaroundState,
   removeWorkaroundState,
   setWorkaroundState,
+  updateWorkaroundState,
   type WorkaroundState,
 } from "../api/lsfgApi";
 import {
@@ -14,12 +15,11 @@ import {
   subscribeSteamLaunchOptions,
   type SteamLaunchOptionsSnapshot,
 } from "../utils/steamLaunchOptions";
+import { flushWorkaroundSaves, queueWorkaroundSave } from "../utils/workaroundSaves";
 import { showErrorToast } from "../utils/toastUtils";
 
 export type WorkaroundField = keyof WorkaroundState;
 export type WorkaroundLoadStatus = "loading" | "ready" | "error";
-
-const SLIDER_DEBOUNCE_MS = 250;
 
 const DEFAULT_WORKAROUND_STATE: WorkaroundState = {
   dxvkFrameRate: 0,
@@ -29,12 +29,6 @@ const DEFAULT_WORKAROUND_STATE: WorkaroundState = {
   disableVkbasalt: false,
   enableZink: false,
 };
-
-interface PendingSliderUpdate {
-  timer: number;
-  value: number;
-  waiters: Array<(success: boolean) => void>;
-}
 
 export interface WorkaroundSnapshot {
   steam: SteamLaunchOptionsSnapshot;
@@ -116,10 +110,11 @@ export function usePerAppWorkarounds(appId: string, nonSteam: boolean): PerAppWo
   const [status, setStatus] = useState<WorkaroundLoadStatus>("loading");
   const [snapshot, setSnapshot] = useState<WorkaroundSnapshot | null>(null);
   const [error, setError] = useState<string | null>(null);
-  const pendingSliderUpdate = useRef<PendingSliderUpdate | null>(null);
+  const saveKey = `steam:${appId}`;
   const numericAppId = Number(appId);
 
   const loadSnapshot = useCallback(async () => {
+    await flushWorkaroundSaves(saveKey);
     const [result, steam] = await Promise.all([
       getWorkaroundState(appId),
       readSteamLaunchOptions(numericAppId, nonSteam),
@@ -133,7 +128,7 @@ export function usePerAppWorkarounds(appId: string, nonSteam: boolean): PerAppWo
       );
     }
     return makeSnapshot(steam, result, nonSteam);
-  }, [appId, nonSteam, numericAppId]);
+  }, [appId, nonSteam, numericAppId, saveKey]);
 
   const applySnapshot = useCallback((next: WorkaroundSnapshot) => {
     setSnapshot(next);
@@ -197,70 +192,24 @@ export function usePerAppWorkarounds(appId: string, nonSteam: boolean): PerAppWo
     };
   }, [applySnapshot, loadSnapshot, nonSteam, numericAppId]);
 
-  const persistUpdate = useCallback(async (field: WorkaroundField, value: boolean | number): Promise<boolean> => {
-    const current = snapshot;
-    if (!current) return false;
-    setError(null);
-    const nextState = { ...current.state, [field]: value } as WorkaroundState;
-    try {
-      const result = await setWorkaroundState(
-        appId,
-        nextState,
-        current.commandTokenAdded,
-        nonSteam,
-      );
-      if (!result.success || !result.state) throw new Error(result.error || "Could not save workaround state");
-      applySnapshot({
-        ...current,
-        state: result.state,
-        wrapperPath: result.wrapper_path || current.wrapperPath,
-        wrapperOwned: result.wrapper_owned === true,
-        commandTokenAdded: result.command_token_added === true,
-      });
-      return true;
-    } catch (updateError) {
-      const nextError = asError(updateError);
-      setStatus("error");
-      setError(nextError.message);
-      showErrorToast("Workaround update failed", nextError.message);
-      return false;
-    }
-  }, [appId, applySnapshot, snapshot]);
-
-  const flushSliderUpdate = useCallback(async (): Promise<boolean> => {
-    const pending = pendingSliderUpdate.current;
-    if (!pending) return true;
-    pendingSliderUpdate.current = null;
-    clearTimeout(pending.timer);
-    const success = await persistUpdate("dxvkFrameRate", pending.value);
-    pending.waiters.forEach((resolve) => resolve(success));
-    return success;
-  }, [persistUpdate]);
-
-  const update = useCallback(async (field: WorkaroundField, value: boolean | number): Promise<boolean> => {
-    if (field === "dxvkFrameRate") {
-      setError(null);
-      return new Promise<boolean>((resolve) => {
-        const pending = pendingSliderUpdate.current || { timer: 0, value: 0, waiters: [] };
-        window.clearTimeout(pending.timer);
-        pending.value = Number(value);
-        pending.waiters.push(resolve);
-        pending.timer = window.setTimeout(() => { void flushSliderUpdate(); }, SLIDER_DEBOUNCE_MS);
-        pendingSliderUpdate.current = pending;
-      });
-    }
-    const sliderSuccess = await flushSliderUpdate();
-    if (!sliderSuccess) return false;
-    return persistUpdate(field, value);
-  }, [flushSliderUpdate, persistUpdate]);
-
-  useEffect(() => () => {
-    const pending = pendingSliderUpdate.current;
-    if (!pending) return;
-    window.clearTimeout(pending.timer);
-    pendingSliderUpdate.current = null;
-    pending.waiters.forEach((resolve) => resolve(false));
-  }, [numericAppId, nonSteam]);
+  const update = useCallback((field: WorkaroundField, value: boolean | number) => (
+    queueWorkaroundSave(saveKey, field, value, async (changes) => {
+      try {
+        const result = await updateWorkaroundState(appId, changes);
+        const state = result.state;
+        if (!result.success || !state) throw new Error(result.error || "Could not save workaround state");
+        setSnapshot((current) => current ? { ...current, state } : current);
+        setError(null);
+        return true;
+      } catch (updateError) {
+        const nextError = asError(updateError);
+        setStatus("error");
+        setError(nextError.message);
+        showErrorToast("Workaround update failed", nextError.message);
+        return false;
+      }
+    })
+  ), [appId, saveKey]);
 
   return useMemo(() => ({ status, snapshot, refresh, update, error }), [error, refresh, snapshot, status, update]);
 }

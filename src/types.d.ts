@@ -1,3 +1,8 @@
+declare module "@decky/manifest" {
+  const manifest: { name: string };
+  export default manifest;
+}
+
 declare module "*.svg" {
   const content: string;
   export default content;
@@ -37,7 +42,3 @@ interface SteamApps {
   TerminateApp(appId: string, param1: boolean): void;
   GetAllShortcuts?(): Promise<unknown[]>;
 }
-
-declare const SteamClient: {
-  Apps: SteamApps;
-};

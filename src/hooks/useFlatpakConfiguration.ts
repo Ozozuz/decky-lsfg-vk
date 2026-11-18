@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   enableFlatpakApp,
   getFlatpakApps,
@@ -12,6 +12,7 @@ import {
   type WorkaroundState,
 } from "../api/lsfgApi";
 import { selectMostRecentRunningFlatpak } from "../utils/nowPlaying";
+import { flushWorkaroundSaves, queueWorkaroundSave } from "../utils/workaroundSaves";
 import { showErrorToast } from "../utils/toastUtils";
 
 type FlatpakOperationResult = {
@@ -26,6 +27,7 @@ export function useFlatpakConfiguration(enabled: boolean) {
   const [runningApps, setRunningApps] = useState<RunningFlatpakApp[]>([]);
   const [loading, setLoading] = useState(false);
   const [busyAppId, setBusyAppId] = useState("");
+  const operations = useRef(Promise.resolve<FlatpakOperationResult>({ success: true }));
 
   const reload = useCallback(async () => {
     if (!enabled) {
@@ -60,62 +62,82 @@ export function useFlatpakConfiguration(enabled: boolean) {
   }, [reload]);
 
   useEffect(() => {
-    void pollRunning();
-    if (!enabled) return;
-    const interval = window.setInterval(() => void pollRunning(), 2000);
-    return () => window.clearInterval(interval);
+    let stopped = false;
+    let timer: number | undefined;
+    const poll = async () => {
+      await pollRunning();
+      if (enabled && !stopped) timer = window.setTimeout(() => void poll(), 2000);
+    };
+    void poll();
+    return () => {
+      stopped = true;
+      window.clearTimeout(timer);
+    };
   }, [enabled, pollRunning]);
 
-  const operate = useCallback(async (
+  const operate = useCallback((
     appId: string,
     operation: () => Promise<FlatpakOperationResult>,
     refresh = true,
   ): Promise<FlatpakOperationResult> => {
-    if (busyAppId) return { success: false };
-    setBusyAppId(appId);
-    try {
-      const result = await operation();
-      if (!result.success) throw new Error(result.error || "Flatpak operation failed");
-      if (refresh) {
-        await reload();
-        await pollRunning();
+    const next = operations.current.then(async () => {
+      setBusyAppId(appId);
+      try {
+        const result = await operation();
+        if (!result.success) throw new Error(result.error || "Flatpak operation failed");
+        return result;
+      } catch (error) {
+        const message = error instanceof Error ? error.message : String(error);
+        showErrorToast("Flatpak operation failed", message);
+        return { success: false, error: message };
+      } finally {
+        if (refresh) {
+          await reload();
+          await pollRunning();
+        }
+        setBusyAppId("");
       }
-      return result;
-    } catch (error) {
-      showErrorToast("Flatpak operation failed", error instanceof Error ? error.message : String(error));
-      return { success: false, error: error instanceof Error ? error.message : String(error) };
-    } finally {
-      setBusyAppId("");
-    }
-  }, [busyAppId, pollRunning, reload]);
+    });
+    operations.current = next;
+    return next;
+  }, [pollRunning, reload]);
 
   const enableApp = useCallback(async (appId: string) => (
     await operate(appId, () => enableFlatpakApp(appId))
   ).success, [operate]);
-  const removeApp = useCallback(async (appId: string) => (
-    await operate(appId, () => removeFlatpakApp(appId))
-  ).success, [operate]);
+
+  const removeApp = useCallback(async (appId: string) => {
+    await flushWorkaroundSaves("flatpak:" + appId);
+    return (await operate(appId, () => removeFlatpakApp(appId))).success;
+  }, [operate]);
+
   const enableAll = useCallback(async (): Promise<void> => {
-    if (busyAppId) return;
     const available = apps.filter((app) => (
       !app.enabled && !(app.prepared && !app.owned) && !app.error
     ));
-    for (const app of available) {
-      const result = await operate(app.app_id, () => enableFlatpakApp(app.app_id), false);
-      if (!result.success) break;
-    }
-    await reload();
-    await pollRunning();
-  }, [apps, busyAppId, operate, pollRunning, reload]);
+    if (!available.length) return;
+    await operate(available[0].app_id, async () => {
+      for (const app of available) {
+        const result = await enableFlatpakApp(app.app_id);
+        if (!result.success) return result;
+      }
+      return { success: true };
+    });
+  }, [apps, operate]);
+
   const removeAll = useCallback(async (): Promise<void> => {
-    if (busyAppId) return;
-    for (const app of apps.filter((item) => item.enabled)) {
-      const result = await operate(app.app_id, () => removeFlatpakApp(app.app_id), false);
-      if (!result.success) break;
-    }
-    await reload();
-    await pollRunning();
-  }, [apps, busyAppId, operate, pollRunning, reload]);
+    const configured = apps.filter((app) => app.enabled);
+    if (!configured.length) return;
+    await Promise.all(configured.map((app) => flushWorkaroundSaves("flatpak:" + app.app_id)));
+    await operate(configured[0].app_id, async () => {
+      for (const app of configured) {
+        const result = await removeFlatpakApp(app.app_id);
+        if (!result.success) return result;
+      }
+      return { success: true };
+    });
+  }, [apps, operate]);
+
   const updateConfig = useCallback(
     async (appId: string, config: LsfgConfig) => {
       const result = await operate(appId, () => updateFlatpakConfig(appId, config), false);
@@ -129,15 +151,20 @@ export function useFlatpakConfiguration(enabled: boolean) {
     [operate],
   );
   const updateWorkarounds = useCallback(
-    async (appId: string, state: WorkaroundState) => {
-      const result = await operate(appId, () => setFlatpakWorkaroundState(appId, state), false);
-      if (result.success) {
-        setApps((current) => current.map((app) => (
-          app.app_id === appId ? { ...app, workarounds: result.state || state } : app
-        )));
-      }
-      return result.success;
-    },
+    (appId: string, field: keyof WorkaroundState, value: boolean | number) => (
+      queueWorkaroundSave("flatpak:" + appId, field, value, async (changes) => (
+        await operate(appId, async () => {
+          const result = await setFlatpakWorkaroundState(appId, changes);
+          const state = result.state;
+          if (result.success && state) {
+            setApps((current) => current.map((app) => (
+              app.app_id === appId ? { ...app, workarounds: state } : app
+            )));
+          }
+          return result;
+        }, false)
+      ).success)
+    ),
     [operate],
   );
 

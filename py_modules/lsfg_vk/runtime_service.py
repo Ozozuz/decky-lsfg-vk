@@ -39,11 +39,12 @@ class RuntimeService(BaseService):
         output = "\n".join(value for value in values if value)
         return output if len(output) <= cls.MAX_OUTPUT_LENGTH else output[: cls.MAX_OUTPUT_LENGTH]
 
-    def _run(self, arguments: Sequence[str]) -> tuple[int, str]:
-        if not self.cli_path.is_file() or not os.access(self.cli_path, os.X_OK):
-            raise FileNotFoundError(f"{CLI_FILENAME} is not installed at {self.cli_path}")
+    def _run(self, arguments: Sequence[str], *, cli_path: Path | None = None) -> tuple[int, str]:
+        cli_path = self.cli_path if cli_path is None else cli_path
+        if not cli_path.is_file() or not os.access(cli_path, os.X_OK):
+            raise FileNotFoundError(f"{CLI_FILENAME} is not installed at {cli_path}")
         result = subprocess.run(
-            [str(self.cli_path), *arguments],
+            [str(cli_path), *arguments],
             cwd=str(self.user_home),
             env=self._environment(),
             capture_output=True,
@@ -53,7 +54,7 @@ class RuntimeService(BaseService):
         )
         return result.returncode, self._output(result.stdout, result.stderr)
 
-    def validate_config_content(self, content: str) -> None:
+    def validate_config_content(self, content: str, *, cli_path: Path | None = None) -> None:
         self.config_dir.mkdir(parents=True, exist_ok=True)
         temporary_path: Path | None = None
         try:
@@ -70,7 +71,7 @@ class RuntimeService(BaseService):
                 temporary_file.flush()
                 os.fsync(temporary_file.fileno())
 
-            returncode, output = self._run(("validate", "--config", str(temporary_path)))
+            returncode, output = self._run(("validate", "--config", str(temporary_path)), cli_path=cli_path)
             if returncode != 0:
                 raise ValueError(output or "lsfg-vk rejected the generated configuration")
         finally:

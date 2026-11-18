@@ -2,8 +2,8 @@
 set -euo pipefail
 
 deck_host="deck@192.168.0.241"
-plugin_root="Decky LSFG-VK"
-install_path="/home/deck/homebrew/plugins/Decky LSFG-VK"
+plugin_root="$(node -p 'require("./plugin.json").name')"
+install_path="/home/deck/homebrew/plugins/$plugin_root"
 
 if [[ -z ${DEPLOY_EXPECT:-} && -f .env ]]; then
     set -a

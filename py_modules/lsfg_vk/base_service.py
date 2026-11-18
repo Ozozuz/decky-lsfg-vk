@@ -33,7 +33,7 @@ class BaseService:
         self.log.info(f"Removed {path}")
         return True
 
-    def _write_file(self, path: Path, content: str, mode: int = 0o644) -> None:
+    def _write_file(self, path: Path, content: str, mode: int = 0o644, *, owner=None) -> None:
         path.parent.mkdir(parents=True, exist_ok=True)
         temporary_path = None
         try:
@@ -47,8 +47,10 @@ class BaseService:
                 temporary_path = Path(temporary_file.name)
                 temporary_file.write(content)
                 temporary_file.flush()
+                if owner is not None:
+                    os.fchown(temporary_file.fileno(), *owner)
+                os.fchmod(temporary_file.fileno(), mode)
                 os.fsync(temporary_file.fileno())
-            temporary_path.chmod(mode)
             os.replace(temporary_path, path)
         except Exception:
             if temporary_path is not None:

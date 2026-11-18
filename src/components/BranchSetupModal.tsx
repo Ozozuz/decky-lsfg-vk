@@ -40,7 +40,7 @@ export function showBranchSetupModal() {
           <li>Open Lossless Scaling in your Steam library.</li>
           <li>Open Properties, then Game Versions &amp; Betas.</li>
           <li>Select the <strong>lsfg-vk</strong> branch.</li>
-          <li>Wait for Steam to finish the update and reopen Decky LSFG-VK.</li>
+          <li>Wait for Steam to finish the update and reopen the plugin.</li>
         </ol>
         <DialogButton
           onClick={() => closeModal()}

@@ -11,31 +11,25 @@ import { ProfileDetails } from "./ProfileDetails";
 interface ConfigurationTabProps {
   title: string;
   source: KnownGameSource;
-  config: ConfigurationData;
+  configFor: (appid: string) => ConfigurationData;
   targets: GameTarget[];
   runningGame: GameTarget | null;
-  onSelect: (appid: string) => void;
-  onConfigChange: (
-    fieldName: keyof ConfigurationData,
-    value: boolean | number | string | string[],
-    cleanupLaunchOptions?: boolean,
-  ) => Promise<void>;
+  onSave: (appid: string, config: ConfigurationData, cleanupLaunchOptions: boolean) => Promise<boolean>;
   onEnable: (appid: string) => Promise<boolean>;
   onEnableAll: (source: KnownGameSource) => Promise<void>;
   bulkOperationBusy: boolean;
   onRepair: (appid: string) => Promise<boolean>;
-  onReset: () => Promise<void>;
+  onReset: (appid: string) => Promise<boolean>;
   onResetAll: (source: KnownGameSource) => Promise<void>;
 }
 
 export function ConfigurationTab({
   title,
   source,
-  config,
+  configFor,
   targets,
   runningGame,
-  onSelect,
-  onConfigChange,
+  onSave,
   onEnable,
   onEnableAll,
   bulkOperationBusy,
@@ -84,7 +78,6 @@ export function ConfigurationTab({
             onSelect={(appid) => {
               setFocusConfiguredToggle(false);
               setFocusDetailAction(targets.find((target) => target.appid === appid)?.configured ? "fps" : "enable");
-              onSelect(appid);
               setDetailAppId(appid);
             }}
             onEnableAll={onEnableAll}
@@ -107,9 +100,10 @@ export function ConfigurationTab({
     if (quitRunningGame) SteamClient.Apps.TerminateApp(appid, false);
     setFocusFpsMultiplier(true);
   };
+  const config = configFor(detailAppId);
   const handleProfileAction = async () => {
     if (selectedTarget?.configured) {
-      await onReset();
+      if (!(await onReset(selectedTarget.appid))) return;
       setFocusConfiguredToggle(true);
       closeDetails();
     } else if (detailAppId) {
@@ -185,7 +179,9 @@ export function ConfigurationTab({
       {selectedTarget?.configured && (
         <GameConfigurationControls
           config={config}
-          onConfigChange={(field, value) => onConfigChange(field, value, selectedTarget?.source !== "unknown")}
+          onConfigChange={async (field, value) => {
+            await onSave(detailAppId, { ...config, [field]: value }, selectedTarget.source !== "unknown");
+          }}
           autoFocusFpsMultiplier={focusFpsMultiplier}
           onFpsMultiplierFocused={clearFpsFocusRequest}
           showWorkarounds={selectedTarget.source !== "unknown"}

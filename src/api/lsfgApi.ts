@@ -158,7 +158,7 @@ export const getConfigFileContent = callable<[], FileContentResult>("get_config_
 export const getFlatpakApps = callable<[], FlatpakAppsResult>("get_flatpak_apps");
 export const enableFlatpakApp = callable<[string], FlatpakAppResult>("enable_flatpak_app");
 export const updateFlatpakConfig = callable<[string, LsfgConfig], FlatpakAppResult>("update_flatpak_config");
-export const setFlatpakWorkaroundState = callable<[string, WorkaroundState], WorkaroundStateResult>("set_flatpak_workaround_state");
+export const setFlatpakWorkaroundState = callable<[string, Partial<WorkaroundState>], WorkaroundStateResult>("set_flatpak_workaround_state");
 export const removeFlatpakApp = callable<[string], FlatpakAppResult>("remove_flatpak_app");
 export const getRunningFlatpakApps = callable<[], RunningFlatpakAppsResult>("get_running_flatpak_apps");
 export const getGameConfigs = callable<[], GameConfigsResult>("get_game_configs");
@@ -174,7 +174,9 @@ export const setWorkaroundState = callable<[
   WorkaroundState,
   boolean,
   boolean,
+  boolean?,
 ], WorkaroundStateResult>("set_workaround_state");
+export const updateWorkaroundState = callable<[string, Partial<WorkaroundState>], WorkaroundStateResult>("update_workaround_state");
 export const removeWorkaroundState = callable<[string], WorkaroundStateResult>("remove_workaround_state");
 export const getWorkaroundApps = callable<[], WorkaroundAppsResult>("get_workaround_apps");
 export const getDebugFileContents = callable<[], DebugFileContentsResult>("get_debug_file_contents");

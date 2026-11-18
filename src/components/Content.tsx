@@ -1,7 +1,6 @@
 import { Tabs } from "@decky/ui";
 import { useEffect, useRef, useState, type FocusEvent, type ReactNode } from "react";
 import { FaCube, FaExternalLinkAlt, FaFileAlt, FaGamepad, FaSteam, FaTools } from "react-icons/fa";
-import { ConfigurationData } from "../config/configSchema";
 import { useFlatpakConfiguration } from "../hooks/useFlatpakConfiguration";
 import { useGameConfiguration } from "../hooks/useGameConfiguration";
 import { useInstallation } from "../hooks/useLsfgHooks";
@@ -54,20 +53,18 @@ function usePersistentBoolean(key: string, defaultValue: boolean) {
 
 export function Content() {
   const {
-    config,
+    configFor,
     runningConfig,
     globalConfig,
     targets,
     runningGame,
-    setSelectedAppId,
-    save,
     saveFor,
     updateGlobal,
     enable,
     enableAll,
     bulkOperationBusy,
     repair,
-    resetSelected,
+    resetFor,
     resetAll,
     cleanupAllWorkarounds,
     reload,
@@ -133,14 +130,6 @@ export function Content() {
     if (!showDebugTab && tab === "ConfigFile") setTab(setupComplete ? "Steam" : "Settings");
   }, [setupComplete, showDebugTab, tab]);
 
-  const handleConfigChange = async (
-    fieldName: keyof ConfigurationData,
-    value: boolean | number | string | string[],
-    cleanupLaunchOptions = false,
-  ) => {
-    await save({ ...config, [fieldName]: value }, cleanupLaunchOptions);
-  };
-
   const settings = (
     <SettingsTab
       isInstalled={isInstalled}
@@ -190,16 +179,15 @@ export function Content() {
             <ConfigurationTab
               title="Steam games"
               source="steam"
-              config={config}
+              configFor={configFor}
               targets={steamTargets}
               runningGame={runningGame}
-              onSelect={setSelectedAppId}
-              onConfigChange={handleConfigChange}
+              onSave={saveFor}
               onEnable={enable}
               onEnableAll={enableAll}
               bulkOperationBusy={bulkOperationBusy}
               onRepair={repair}
-              onReset={resetSelected}
+              onReset={resetFor}
               onResetAll={resetAll}
             />,
           ),
@@ -211,16 +199,15 @@ export function Content() {
             <ConfigurationTab
               title="Non-Steam games"
               source="nonSteam"
-              config={config}
+              configFor={configFor}
               targets={nonSteamTargets}
               runningGame={runningGame}
-              onSelect={setSelectedAppId}
-              onConfigChange={handleConfigChange}
+              onSave={saveFor}
               onEnable={enable}
               onEnableAll={enableAll}
               bulkOperationBusy={bulkOperationBusy}
               onRepair={repair}
-              onReset={resetSelected}
+              onReset={resetFor}
               onResetAll={resetAll}
             />
           ),

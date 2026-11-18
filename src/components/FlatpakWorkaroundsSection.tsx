@@ -1,18 +1,19 @@
 import { ButtonItem, PanelSectionRow, SliderField, ToggleField } from "@decky/ui";
-import { useEffect, useRef, useState } from "react";
+import { type ReactNode, useEffect, useState } from "react";
 import { RiArrowDownSFill, RiArrowUpSFill } from "react-icons/ri";
 import type { WorkaroundState } from "../api/lsfgApi";
 import t from "../i18n/i18n";
 
 interface Props {
+  children: ReactNode;
   state: WorkaroundState;
   disabled?: boolean;
-  onChange: (state: WorkaroundState) => Promise<boolean>;
+  onChange: (field: keyof WorkaroundState, value: boolean | number) => Promise<boolean>;
 }
 
 const WORKAROUNDS_COLLAPSED_KEY = "lsfg-flatpak-workarounds-collapsed-v1";
 
-export function FlatpakWorkaroundsSection({ state, disabled = false, onChange }: Props) {
+export function FlatpakWorkaroundsSection({ children, state, disabled = false, onChange }: Props) {
   const [collapsed, setCollapsed] = useState(() => {
     try {
       return localStorage.getItem(WORKAROUNDS_COLLAPSED_KEY) !== "false";
@@ -21,7 +22,6 @@ export function FlatpakWorkaroundsSection({ state, disabled = false, onChange }:
     }
   });
   const [fpsValue, setFpsValue] = useState(state.dxvkFrameRate);
-  const timer = useRef<number | null>(null);
 
   useEffect(() => {
     try {
@@ -33,27 +33,32 @@ export function FlatpakWorkaroundsSection({ state, disabled = false, onChange }:
     setFpsValue(state.dxvkFrameRate);
   }, [state.dxvkFrameRate]);
 
-  useEffect(() => () => {
-    if (timer.current !== null) window.clearTimeout(timer.current);
-  }, []);
-
   const update = (field: keyof WorkaroundState, value: boolean | number) => {
-    void onChange({ ...state, [field]: value });
-  };
-
-  const updateFps = (value: number) => {
-    setFpsValue(value);
-    if (timer.current !== null) window.clearTimeout(timer.current);
-    timer.current = window.setTimeout(() => {
-      timer.current = null;
-      void onChange({ ...state, dxvkFrameRate: value });
-    }, 250);
+    void onChange(field, value);
   };
 
   const fpsLabel = fpsValue > 0 ? `${fpsValue} FPS` : t("CONFIG_BASE_FPS_CAP_OFF", "Off");
 
   return (
     <>
+      <PanelSectionRow>
+        <SliderField
+          label={`${t("CONFIG_BASE_FPS_CAP", "Base FPS Cap")} (${fpsLabel})`}
+          description={t("CONFIG_BASE_FPS_CAP_DESC", "Limits real FPS before frame generation in DXVK and VKD3D-Proton games. 0 disables the plugin cap. Restart the Flatpak app to apply.")}
+          value={fpsValue}
+          min={0}
+          max={60}
+          step={1}
+          onChange={(value) => {
+            setFpsValue(value);
+            void onChange("dxvkFrameRate", value).then((success) => {
+              if (!success) setFpsValue((current) => current === value ? state.dxvkFrameRate : current);
+            });
+          }}
+          disabled={disabled}
+        />
+      </PanelSectionRow>
+      {children}
       <PanelSectionRow>
         <div
           style={{
@@ -80,18 +85,6 @@ export function FlatpakWorkaroundsSection({ state, disabled = false, onChange }:
       </PanelSectionRow>
       {!collapsed && (
         <>
-          <PanelSectionRow>
-            <SliderField
-              label={`${t("CONFIG_BASE_FPS_CAP", "Base FPS Cap")} (${fpsLabel})`}
-              description={t("CONFIG_BASE_FPS_CAP_DESC", "Base cap for DXVK-backed games before frame generation; 0 disables. Requires app restart to apply.")}
-              value={fpsValue}
-              min={0}
-              max={60}
-              step={1}
-              onChange={updateFps}
-              disabled={disabled}
-            />
-          </PanelSectionRow>
           <PanelSectionRow>
             <ToggleField
               label={t("CONFIG_DISABLE_STEAMDECK_MODE", "Disable Steam Deck Mode")}

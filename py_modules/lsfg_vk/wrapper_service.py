@@ -177,6 +177,7 @@ class WrapperService(BaseService):
         frame_rate = state["dxvkFrameRate"]
         if frame_rate > 0:
             lines.extend([
+                f"    export VKD3D_FRAME_RATE={frame_rate}",
                 '    if [ -n "${DXVK_CONFIG+x}" ]; then',
                 '      if [ -n "${DXVK_CONFIG}" ]; then',
                 f'        DXVK_CONFIG="${{DXVK_CONFIG}}; dxvk.maxFrameRate = {frame_rate}"',
@@ -293,10 +294,12 @@ class WrapperService(BaseService):
         state: Dict[str, Any],
         command_token_added: bool = False,
         non_steam: bool = False,
+        *,
+        preserve_existing: bool = False,
+        patch: bool = False,
     ) -> Dict[str, Any]:
         try:
             normalized = self._valid_appid(appid)
-            validated_state = self._validate_state(state)
             if type(command_token_added) is not bool:
                 raise ValueError("command_token_added must be a boolean")
             if type(non_steam) is not bool:
@@ -304,8 +307,19 @@ class WrapperService(BaseService):
             with self._lock:
                 self._assert_wrapper_owned_or_absent()
                 document, _, _ = self._read_document()
+                existing = document["apps"].get(normalized)
+                if patch:
+                    if existing is None:
+                        raise ValueError("Workaround state is not initialized for this profile")
+                    if not isinstance(state, dict) or any(key not in self.STATE_FIELDS for key in state):
+                        raise ValueError("Invalid workaround state")
+                    state = {**existing["state"], **state}
+                    command_token_added = existing["command_token_added"]
+                    non_steam = existing["non_steam"]
+                elif preserve_existing and existing is not None:
+                    state = existing["state"]
                 document["apps"][normalized] = {
-                    "state": validated_state,
+                    "state": self._validate_state(state),
                     "command_token_added": command_token_added,
                     "non_steam": non_steam,
                 }

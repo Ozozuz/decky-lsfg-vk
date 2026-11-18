@@ -3,6 +3,7 @@ import shutil
 import tarfile
 import tempfile
 import traceback
+from contextlib import ExitStack
 from pathlib import Path
 from typing import Dict
 
@@ -52,12 +53,7 @@ class InstallationService(BaseService):
             if not archive_path.exists():
                 raise FileNotFoundError(f"{ARCHIVE_FILENAME} not found at {archive_path}")
             self._ensure_directories()
-            profile_data = self._prepare_config()
-            self._remove_legacy_layer_files()
             self._install_archive(archive_path)
-            content = ConfigurationManager.generate_toml_content_multi_profile(profile_data)
-            self.runtime_service.validate_config_content(content)
-            self._write_file(self.config_file_path, content, 0o644)
             return self._success_response(InstallationResponse, "lsfg-vk 2.0.0 installed successfully")
         except Exception as error:
             self.log.error(f"Error installing lsfg-vk: {error}")
@@ -82,45 +78,98 @@ class InstallationService(BaseService):
         }
 
     def _install_archive(self, archive_path: Path) -> None:
+        original_config = self.config_file_path.read_bytes() if self.config_file_path.exists() else None
+        profile_data, legacy_version = self._prepare_config(original_config.decode("utf-8") if original_config is not None else None)
+        content = ConfigurationManager.generate_toml_content_multi_profile(profile_data)
         destinations = self._payload_destinations()
-        found = set()
-        with tarfile.open(archive_path, "r:*") as archive:
+        with ExitStack() as staging, tarfile.open(archive_path, "r:*") as archive:
             members = {
                 member.name.removeprefix("./"): member
                 for member in archive.getmembers()
                 if member.isfile()
             }
+            missing = sorted(set(destinations) - members.keys())
+            if missing:
+                raise OSError("Archive is missing required files: " + ", ".join(missing))
+
+            directories: dict[Path, Path] = {}
+            keep_staging = False
+
+            def clean_stage(directory: Path) -> None:
+                if not keep_staging:
+                    shutil.rmtree(directory)
+
+
+            def stage_path(destination: Path) -> Path:
+                parent = destination.parent
+                if parent not in directories:
+                    parent.mkdir(parents=True, exist_ok=True)
+                    directories[parent] = Path(tempfile.mkdtemp(dir=parent, prefix=".lsfg-install-"))
+                    staging.callback(clean_stage, directories[parent])
+                return directories[parent] / destination.name
+
+            staged: dict[Path, Path | None] = {}
             for source_path, (destination, mode) in destinations.items():
-                member = members.get(source_path)
-                if member is None:
-                    continue
-                source = archive.extractfile(member)
+                path = stage_path(destination)
+                source = archive.extractfile(members[source_path])
                 if source is None:
-                    continue
-                destination.parent.mkdir(parents=True, exist_ok=True)
-                temporary_path = None
-                try:
-                    with tempfile.NamedTemporaryFile(
-                        mode="wb",
-                        dir=destination.parent,
-                        prefix=f".{destination.name}.",
-                        delete=False,
-                    ) as temporary_file:
-                        temporary_path = Path(temporary_file.name)
-                        with source:
-                            shutil.copyfileobj(source, temporary_file)
-                        temporary_file.flush()
-                        os.fsync(temporary_file.fileno())
-                    temporary_path.chmod(mode)
-                    os.replace(temporary_path, destination)
-                    found.add(source_path)
-                except Exception:
-                    if temporary_path is not None:
-                        temporary_path.unlink(missing_ok=True)
-                    raise
-        missing = sorted(set(destinations) - found)
-        if missing:
-            raise OSError("Archive is missing required files: " + ", ".join(missing))
+                    raise OSError(f"Could not read archive member {source_path}")
+                with source, path.open("wb") as target:
+                    shutil.copyfileobj(source, target)
+                    target.flush()
+                    os.fsync(target.fileno())
+                path.chmod(mode)
+                staged[destination] = path
+
+            self.runtime_service.validate_config_content(content, cli_path=staged[self.cli_file])
+            config = stage_path(self.config_file_path)
+            self._write_file(config, content)
+            staged[self.config_file_path] = config
+            if legacy_version is not None:
+                backup = self.config_file_path.with_name(f"{self.config_file_path.name}.v{legacy_version}.bak")
+                if backup.exists() or backup.is_symlink():
+                    raise FileExistsError(f"Move the existing legacy configuration backup before reinstalling: {backup}")
+                backup_stage = stage_path(backup)
+                backup_stage.write_bytes(original_config)
+                backup_stage.chmod(0o600)
+                staged[backup] = stage_path(backup)
+
+            current_config = self.config_file_path.read_bytes() if self.config_file_path.exists() else None
+            if current_config != original_config:
+                raise RuntimeError("LSFG-VK configuration changed during installation. Retry the operation.")
+            staged.update({self.legacy_lib_file: None, self.legacy_json_file: None})
+            backups = {}
+            for destination in staged:
+                if destination.exists() or destination.is_symlink():
+                    path = stage_path(destination).with_name(f"backup-{destination.name}")
+                    os.link(destination, path, follow_symlinks=False)
+                    backups[destination] = path
+
+            applied = []
+            try:
+                for destination, path in staged.items():
+                    if path is None:
+                        destination.unlink(missing_ok=True)
+                    else:
+                        os.replace(path, destination)
+                    applied.append(destination)
+            except OSError as error:
+                rollback_errors = []
+                for destination in reversed(applied):
+                    try:
+                        if destination in backups:
+                            os.replace(backups[destination], destination)
+                        else:
+                            destination.unlink(missing_ok=True)
+                    except OSError as rollback_error:
+                        rollback_errors.append(str(rollback_error))
+                if rollback_errors:
+                    keep_staging = True
+                    locations = ", ".join(str(directory) for directory in directories.values())
+                    raise OSError(f"{error}. Rollback failed: {', '.join(rollback_errors)}. Backups: {locations}") from error
+                raise
+            if legacy_version is not None:
+                self.log.warning(f"Backed up legacy lsfg-vk configuration at {backup}")
 
     def _default_config(self) -> ProfileData:
         defaults = ConfigurationManager.get_defaults()
@@ -129,24 +178,18 @@ class InstallationService(BaseService):
             global_config={"dll": defaults["dll"], "no_fp16": defaults["no_fp16"]},
         )
 
-    def _prepare_config(self) -> ProfileData:
+    def _prepare_config(self, content: str | None) -> tuple[ProfileData, int | None]:
+        legacy_version = None
         try:
             profile_data = (
-                ConfigurationManager.parse_toml_content_multi_profile(
-                    self.config_file_path.read_text(encoding="utf-8")
-                )
-                if self.config_file_path.exists()
+                ConfigurationManager.parse_toml_content_multi_profile(content)
+                if content is not None
                 else self._default_config()
             )
         except UnsupportedConfigurationVersion as error:
             if not ConfigurationManager.is_discardable_legacy_version(error.version):
                 raise
-            self._remove_if_exists(self.config_file_path)
-            self.log.warning(
-                f"Removed legacy lsfg-vk configuration version {error.version!r} during installation"
-            )
-            profile_data = self._default_config()
-        except ValueError:
+            legacy_version = error.version
             profile_data = self._default_config()
         self._resolve_dll_path(profile_data)
         defaults = ConfigurationManager.get_defaults()
@@ -154,7 +197,7 @@ class InstallationService(BaseService):
             profile_data["profiles"][name] = ConfigurationManager.validate_config(
                 {**defaults, **profile, **profile_data["global_config"]}
             )
-        return profile_data
+        return profile_data, legacy_version
 
     def _resolve_dll_path(self, profile_data: ProfileData) -> bool:
         current_path = str(profile_data["global_config"].get("dll") or "")
@@ -185,10 +228,6 @@ class InstallationService(BaseService):
             self.log.info(f"Repaired lsfg-vk DLL path: {dll_path}")
         except Exception as error:
             self.log.warning(f"Could not repair lsfg-vk DLL path: {error}")
-
-    def _remove_legacy_layer_files(self) -> None:
-        for path in (self.legacy_lib_file, self.legacy_json_file):
-            self._remove_if_exists(path)
 
     def _prune_empty_directories(self) -> None:
         # Only prune directories created by this plugin.  Never remove a

@@ -19,7 +19,7 @@ interface Props {
   onRemove: (appId: string) => Promise<boolean>;
   onRemoveAll: () => Promise<void>;
   onConfigChange: (appId: string, config: LsfgConfig) => Promise<boolean>;
-  onWorkaroundChange: (appId: string, state: WorkaroundState) => Promise<boolean>;
+  onWorkaroundChange: (appId: string, field: keyof WorkaroundState, value: boolean | number) => Promise<boolean>;
 }
 
 const ENABLED_COLLAPSED_KEY = "lsfg-flatpak-enabled-collapsed-v2";
@@ -269,12 +269,13 @@ export function FlatpakTab({
       {selected.enabled && config && (
         <>
           <FpsMultiplierControl config={config} onConfigChange={changeConfig} />
-          <ConfigurationSection config={config} onConfigChange={changeConfig} />
           <FlatpakWorkaroundsSection
             state={selected.workarounds}
             disabled={busy}
-            onChange={(state) => onWorkaroundChange(selected.app_id, state)}
-          />
+            onChange={(field, value) => onWorkaroundChange(selected.app_id, field, value)}
+          >
+            <ConfigurationSection config={config} onConfigChange={changeConfig} />
+          </FlatpakWorkaroundsSection>
           <PanelSectionRow>
             <ButtonItem layout="below" disabled={busy} onClick={() => void onRemove(selected.app_id)}>
               {busy ? "Removing..." : "Remove Flatpak profile"}

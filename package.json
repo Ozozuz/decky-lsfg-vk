@@ -1,16 +1,17 @@
 {
   "name": "decky-lsfg-vk",
-  "version": "0.14.4-flatpak26.08.3",
+  "version": "0.14.4-flatpak26.08.7",
   "description": "Use Lossless Scaling on the Steam Deck using the lsfg-vk vulkan layer",
   "type": "module",
   "scripts": {
-    "build": "rollup -c",
+    "build": "tsc --noEmit && rollup -c",
+    "typecheck": "tsc --noEmit",
     "watch": "rollup -c -w",
-    "test": "node --experimental-strip-types --test tests/steamLaunchOptions.test.ts tests/nowPlaying.test.ts tests/gameTargets.test.ts && python3.12 -m unittest discover -s tests -p 'test_*.py'"
+    "test": "node --experimental-strip-types --test tests/steamLaunchOptions.test.ts tests/nowPlaying.test.ts tests/gameTargets.test.ts tests/workaroundSaves.test.ts && python3.12 -m unittest discover -s tests -p 'test_*.py'"
   },
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/xXJSONDeruloXx/decky-lsfg-vk.git"
+    "url": "git+https://github.com/Ozozuz/decky-lsfg-vk.git"
   },
   "keywords": [
     "decky",
@@ -25,14 +26,15 @@
   "author": "Kurt Himebauch <dkh4830@gmail.com>",
   "license": "BSD-3-Clause",
   "bugs": {
-    "url": "https://github.com/xXJSONDeruloXx/decky-lossless-scaling-vk/issues"
+    "url": "https://github.com/Ozozuz/decky-lsfg-vk/issues"
   },
-  "homepage": "https://github.com/xXJSONDeruloXx/decky-lossless-scaling-vk#readme",
+  "homepage": "https://github.com/Ozozuz/decky-lsfg-vk#readme",
   "devDependencies": {
     "@decky/rollup": "^1.0.1",
     "@decky/ui": "^4.7.2",
     "@types/react": "18.3.3",
     "@types/react-dom": "18.3.0",
+    "@types/react-router": "5.1.18",
     "@types/webpack": "^5.28.5",
     "rollup": "^4.22.5",
     "typescript": "^5.6.2"

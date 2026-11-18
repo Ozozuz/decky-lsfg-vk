@@ -58,6 +58,20 @@ class WrapperServiceTests(unittest.TestCase):
         self.assertIn(self.service.MARKER, self.service.wrapper_path.read_text(encoding="utf-8"))
         self.assertEqual(self.service.get("123")["state"], self._state(dxvkFrameRate=60, enableZink=True))
 
+    def test_partial_updates_and_repair_preserve_other_fields(self):
+        initial = self._state()
+        self.assertTrue(self.service.set("123", initial, non_steam=True)["success"])
+        self.assertTrue(self.service.set("123", {"dxvkFrameRate": 30}, patch=True)["success"])
+        updated = self.service.set("123", {"disableHdr": False}, patch=True)
+        self.assertEqual(updated["state"]["dxvkFrameRate"], 30)
+        self.assertFalse(updated["state"]["disableHdr"])
+        self.assertTrue(updated["non_steam"])
+
+        repaired = self.service.set("123", initial, non_steam=True, preserve_existing=True)
+        self.assertEqual(repaired["state"], updated["state"])
+        self.service.remove("123")
+        self.assertFalse(self.service.set("123", {"dxvkFrameRate": 31}, patch=True)["success"])
+
     def test_dispatch_exports_appid_config_and_workarounds(self):
         self.service.set(
             "123",
@@ -69,6 +83,7 @@ class WrapperServiceTests(unittest.TestCase):
             env={
                 "DXVK_CONFIG": "dxgi.syncInterval = 0",
                 "DXVK_FRAME_RATE": "5",
+                "VKD3D_FRAME_RATE": "50",
                 "ENABLE_GAMESCOPE_WSI": "1",
                 "DISABLE_LSFGVK": "1",
                 "DISABLE_LSFG": "1",
@@ -88,11 +103,16 @@ class WrapperServiceTests(unittest.TestCase):
         self.assertEqual(values["MESA_LOADER_DRIVER_OVERRIDE"], "zink")
         self.assertEqual(values["GALLIUM_DRIVER"], "zink")
         self.assertEqual(values["DXVK_CONFIG"], "dxgi.syncInterval = 0; dxvk.maxFrameRate = 30")
+        self.assertEqual(values["VKD3D_FRAME_RATE"], "30")
         self.assertEqual(values["MANGOHUD"], "1")
         self.assertNotIn("DXVK_FRAME_RATE", values)
         self.assertNotIn("ENABLE_VKBASALT", values)
         self.assertNotIn("DISABLE_LSFGVK", values)
         self.assertNotIn("DISABLE_LSFG", values)
+
+        self.service.set("123", self._state())
+        result = self._run(123, "/usr/bin/env", env={"VKD3D_FRAME_RATE": "50"})
+        self.assertIn("VKD3D_FRAME_RATE=50", result.stdout.splitlines())
 
     def test_preserves_steamdeck_by_default_and_disables_when_requested(self):
         self.service.set("123", self._state())

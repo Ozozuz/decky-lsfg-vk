@@ -1,11 +1,12 @@
 import { ButtonItem, Field, PanelSectionRow, SliderField, ToggleField } from "@decky/ui";
-import { useEffect, useState } from "react";
+import { type ReactNode, useEffect, useState } from "react";
 import { RiArrowDownSFill, RiArrowUpSFill } from "react-icons/ri";
 import { usePerAppWorkarounds } from "../hooks/usePerAppWorkarounds";
 import t from "../i18n/i18n";
 import type { WorkaroundField } from "../hooks/usePerAppWorkarounds";
 
 interface WorkaroundsSectionProps {
+  children: ReactNode;
   appId: string;
   nonSteam: boolean;
   onRepair?: () => Promise<boolean>;
@@ -77,7 +78,7 @@ function usePersistentCollapsed() {
   return [collapsed, () => setCollapsed((value) => !value)] as const;
 }
 
-export function WorkaroundsSection({ appId, nonSteam, onRepair }: WorkaroundsSectionProps) {
+export function WorkaroundsSection({ children, appId, nonSteam, onRepair }: WorkaroundsSectionProps) {
   const [collapsed, toggleCollapsed] = usePersistentCollapsed();
   const { status, snapshot, refresh, update, error } = usePerAppWorkarounds(appId, nonSteam);
   const [repairing, setRepairing] = useState(false);
@@ -117,6 +118,22 @@ export function WorkaroundsSection({ appId, nonSteam, onRepair }: WorkaroundsSec
         }
         `}
       </style>
+      <PanelSectionRow>
+        <SliderField
+          label={`${t("CONFIG_BASE_FPS_CAP", "Base FPS Cap")} (${fpsLabel})`}
+          description={t("CONFIG_BASE_FPS_CAP_DESC", "Limits real FPS before frame generation in DXVK and VKD3D-Proton games. 0 disables the plugin cap. Restart the game to apply.")}
+          value={effectiveFpsValue}
+          min={0}
+          max={60}
+          step={1}
+          onChange={(value) => {
+            setFpsValue(value);
+            void update("dxvkFrameRate", value);
+          }}
+          disabled={controlsDisabled}
+        />
+      </PanelSectionRow>
+      {children}
       <PanelSectionRow>
         <div
           style={{
@@ -179,21 +196,6 @@ export function WorkaroundsSection({ appId, nonSteam, onRepair }: WorkaroundsSec
             </>
           )}
 
-          <PanelSectionRow>
-            <SliderField
-              label={`${t("CONFIG_BASE_FPS_CAP", "Base FPS Cap")} (${fpsLabel})`}
-              description={t("CONFIG_BASE_FPS_CAP_DESC", "Base cap for DXVK-backed games before frame generation; 0 disables. Requires game restart to apply.")}
-              value={effectiveFpsValue}
-              min={0}
-              max={60}
-              step={1}
-              onChange={(value) => {
-                setFpsValue(value);
-                void update("dxvkFrameRate", value);
-              }}
-              disabled={controlsDisabled}
-            />
-          </PanelSectionRow>
           {TOGGLE_ROWS.map((row) => (
             <PanelSectionRow key={row.field}>
               <ToggleField

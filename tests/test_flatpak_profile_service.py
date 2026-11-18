@@ -3,7 +3,7 @@ import tempfile
 import types
 import unittest
 from pathlib import Path
-from unittest.mock import Mock
+from unittest.mock import Mock, patch
 
 
 sys.modules.setdefault(
@@ -17,78 +17,21 @@ from lsfg_vk.flatpak_service import FlatpakService
 from lsfg_vk.flatpak_profile_service import FlatpakProfileService
 
 
-class FakeFlatpakService:
+class FakeFlatpakService(FlatpakService):
     def __init__(self, home: Path):
+        super().__init__()
         self.user_home = home
         self.config_dir = home / ".config/lsfg-vk"
         self.config_file_path = self.config_dir / "conf.toml"
-        self.state = {"version": 2, "plugin_owned_branches": [], "prepared_apps": {}}
         self.commands = []
         self.running = ""
         self.start_times = {}
 
-    def _read_state(self):
-        return self.state
-
-    def _write_state(self, state):
-        self.state = state
-
-    def _override_path(self, app_id):
-        return self.user_home / ".local/share/flatpak/overrides" / app_id
-
-    def _reset_app_override(self, app_id):
-        self._override_path(app_id).unlink(missing_ok=True)
-
     def _process_start_time(self, pid):
         return self.start_times.get(pid)
 
-    @staticmethod
-    def _write_file(path, content, mode=0o644):
-        path.parent.mkdir(parents=True, exist_ok=True)
-        path.write_text(content, encoding="utf-8")
-        path.chmod(mode)
-
-    def prepare_app(self, app_id):
-        apps = self.state["prepared_apps"]
-        if app_id not in apps:
-            self._reset_app_override(app_id)
-            apps[app_id] = {}
-        self._write_file(
-            self._override_path(app_id),
-            "[Context]\nfilesystems=/config:ro;/dll:ro;\n"
-            "unset-environment=DISABLE_LSFGVK;DISABLE_LSFG;\n"
-            "[Environment]\nLSFGVK_CONFIG=/config/conf.toml\nLSFGVK_FLATPAK=1\n",
-        )
-        return {
-            "success": True,
-            "owned": True,
-            "prepared": True,
-            "runtime": "org.freedesktop.Platform/x86_64/24.08",
-            "runtime_branch": "24.08",
-        }
-
-    def remove_app_override(self, app_id):
-        if app_id not in self.state["prepared_apps"]:
-            return {"success": True, "prepared": False, "owned": False}
-        self._reset_app_override(app_id)
-        self.state["prepared_apps"].pop(app_id)
-        return {"success": True, "prepared": False, "owned": False}
-
-    def get_flatpak_apps(self):
-        app_id = "org.example.Game"
-        return {
-            "success": True,
-            "apps": [{
-                "app_id": app_id,
-                "app_name": "Example Game",
-                "runtime": "org.freedesktop.Platform/x86_64/24.08",
-                "runtime_branch": "24.08",
-                "runtime_ready": True,
-                "prepared": app_id in self.state["prepared_apps"],
-                "owned": app_id in self.state["prepared_apps"],
-                "error": None,
-            }],
-        }
+    def check_flatpak_available(self):
+        return True
 
     def _run_flatpak_command(self, args, **_kwargs):
         self.commands.append(args)
@@ -99,20 +42,13 @@ class FakeFlatpakService:
                 stdout=path.read_text(encoding="utf-8") if path.exists() else "",
                 stderr="",
             )
-        if args[:3] == ["override", "--user", "--reset"]:
-            self._reset_app_override(args[3])
-            return types.SimpleNamespace(returncode=0, stdout="", stderr="")
-        if args[0] == "override":
-            app_id = args[-1]
-            path = self._override_path(app_id)
-            content = path.read_text(encoding="utf-8") if path.exists() else ""
-            env = [item.removeprefix("--env=") for item in args if item.startswith("--env=")]
-            unset = [item.removeprefix("--unset-env=") for item in args if item.startswith("--unset-env=")]
-            if unset:
-                content += "\n[Context]\nunset-environment=" + ";".join(unset) + ";\n"
-            if env:
-                content += "\n[Environment]\n" + "\n".join(env) + "\n"
-            self._write_file(path, content)
+        if args[:2] == ["info", "--show-runtime"]:
+            return types.SimpleNamespace(returncode=0, stdout="org.freedesktop.Platform/x86_64/24.08", stderr="")
+        if args[:2] == ["list", "--app"]:
+            return types.SimpleNamespace(returncode=0, stdout="Example Game\torg.example.Game\n", stderr="")
+        if args[:2] == ["list", "--system"]:
+            return types.SimpleNamespace(returncode=0, stdout=f"{self.EXTENSION_ID}\tx86_64\t24.08\n", stderr="")
+        if args[:2] == ["list", "--user"]:
             return types.SimpleNamespace(returncode=0, stdout="", stderr="")
         if args[0] == "ps":
             return types.SimpleNamespace(returncode=0, stdout=self.running, stderr="")
@@ -149,49 +85,78 @@ class FlatpakProfileServiceTests(unittest.TestCase):
         self.assertIn("ENABLE_GAMESCOPE_WSI=0", content)
         self.assertIn("DXVK_HDR=0", content)
 
-    def test_workaround_update_rebuilds_from_clean_override(self):
+    def test_workaround_updates_restore_overlapping_existing_values(self):
+        path = self.flatpak._override_path(self.app_id)
         self.flatpak._write_file(
-            self.flatpak._override_path(self.app_id),
-            "[Environment]\nDXVK_CONFIG=dxgi.syncInterval = 0\nKEEP=yes\n",
+            path,
+            "[Context]\nfilesystems=~/Documents;\nsockets=wayland;\n"
+            "[Environment]\nDXVK_CONFIG=dxgi.syncInterval = 0\nKEEP=yes\n"
+            "[Session Bus Policy]\norg.example.Service=talk\n",
         )
         self.assertTrue(self.service.enable_app(self.app_id)["success"])
 
-        state = self.service.default_state()
-        state.update({"dxvkFrameRate": 30, "disableHdr": False, "enableZink": True})
-        result = self.service.set_workaround_state(self.app_id, state)
-        command = next(
-            args for args in reversed(self.flatpak.commands)
-            if args[0] == "override" and any(item.startswith("--env=LSFGVK_PROFILE=") for item in args)
-        )
-
+        self.assertTrue(self.service.set_workaround_state(self.app_id, {"dxvkFrameRate": 30})["success"])
+        result = self.service.set_workaround_state(self.app_id, {"disableHdr": False, "enableZink": True})
         self.assertTrue(result["success"])
-        self.assertIn("--env=DXVK_CONFIG=dxvk.maxFrameRate = 30", command)
-        self.assertNotIn("dxgi.syncInterval", " ".join(command))
-        self.assertNotIn("--env=DXVK_HDR=0", command)
-        self.assertIn("--env=MESA_LOADER_DRIVER_OVERRIDE=zink", command)
+        self.assertEqual(result["state"]["dxvkFrameRate"], 30)
+        content = path.read_text(encoding="utf-8")
+        self.assertIn("DXVK_CONFIG=dxvk.maxFrameRate = 30", content)
+        self.assertIn("VKD3D_FRAME_RATE=30", content)
+        self.assertIn("KEEP=yes", content)
+        self.assertIn("sockets=wayland", content)
+        self.assertIn("org.example.Service=talk", content)
+        self.assertNotIn("DXVK_HDR=0", content)
+        self.assertIn("MESA_LOADER_DRIVER_OVERRIDE=zink", content)
+
+        self.assertTrue(self.service.set_workaround_state(self.app_id, {"dxvkFrameRate": 0})["success"])
+        content = path.read_text(encoding="utf-8")
+        self.assertNotIn("VKD3D_FRAME_RATE=", content)
+        self.assertIn("DXVK_CONFIG=dxgi.syncInterval = 0", content)
+
+    def test_ownership_write_failure_restores_override_and_keeps_profile(self):
+        self.assertTrue(self.service.enable_app(self.app_id)["success"])
+        path = self.flatpak._override_path(self.app_id)
+        before = path.read_bytes()
+        with patch.object(self.flatpak, "_write_state", side_effect=OSError("ownership write failed")):
+            result = self.service.set_workaround_state(self.app_id, {"dxvkFrameRate": 30})
+        self.assertFalse(result["success"])
+        self.assertEqual(path.read_bytes(), before)
+        self.assertTrue(self.configuration.get_flatpak_config(self.app_id)["exists"])
+        self.assertEqual(self.service.get_workaround_state(self.app_id)["state"]["dxvkFrameRate"], 0)
 
     def test_config_update_returns_without_relisting_flatpaks(self):
         self.assertTrue(self.service.enable_app(self.app_id)["success"])
-        self.service.get_app = Mock(side_effect=AssertionError("config updates must not relist Flatpaks"))
+        self.flatpak.get_flatpak_apps = Mock(side_effect=AssertionError("config updates must not relist Flatpaks"))
 
         result = self.service.update_config(self.app_id, {"multiplier": 4})
 
         self.assertTrue(result["success"])
         self.assertEqual(result["app_id"], self.app_id)
         self.assertEqual(result["config"]["multiplier"], 4)
-        self.service.get_app.assert_not_called()
+        self.flatpak.get_flatpak_apps.assert_not_called()
 
-    def test_remove_resets_override_and_profile(self):
+    def test_remove_preserves_other_override_settings(self):
         self.flatpak._write_file(self.flatpak._override_path(self.app_id), "[Environment]\nKEEP=yes\n")
         self.assertTrue(self.service.enable_app(self.app_id)["success"])
 
         removed = self.service.remove_app(self.app_id)
 
         self.assertTrue(removed["success"])
-        self.assertFalse(self.flatpak._override_path(self.app_id).exists())
+        content = self.flatpak._override_path(self.app_id).read_text(encoding="utf-8")
+        self.assertIn("KEEP=yes", content)
+        self.assertNotIn("LSFGVK_PROFILE", content)
         self.assertFalse(self.configuration.get_flatpak_config(self.app_id)["exists"])
 
-    def test_external_override_change_is_replaced_on_update(self):
+    def test_failed_override_removal_restores_the_profile(self):
+        self.assertTrue(self.service.enable_app(self.app_id)["success"])
+        self.assertTrue(self.service.update_config(self.app_id, {"multiplier": 4})["success"])
+        with patch.object(self.flatpak, "_write_state", side_effect=OSError("ownership write failed")):
+            result = self.service.remove_app(self.app_id)
+        self.assertFalse(result["success"])
+        self.assertIn("LSFGVK_PROFILE=", self.flatpak._override_path(self.app_id).read_text())
+        self.assertEqual(self.configuration.get_flatpak_config(self.app_id)["config"]["multiplier"], 4)
+
+    def test_external_override_change_survives_update(self):
         self.assertTrue(self.service.enable_app(self.app_id)["success"])
         path = self.flatpak._override_path(self.app_id)
         path.write_text(path.read_text(encoding="utf-8") + "EXTERNAL=yes\n", encoding="utf-8")
@@ -199,7 +164,19 @@ class FlatpakProfileServiceTests(unittest.TestCase):
         result = self.service.set_workaround_state(self.app_id, self.service.default_state())
 
         self.assertTrue(result["success"])
-        self.assertNotIn("EXTERNAL=yes", path.read_text(encoding="utf-8"))
+        self.assertIn("EXTERNAL=yes", path.read_text(encoding="utf-8"))
+
+    def test_enabling_does_not_list_all_flatpak_apps(self):
+        self.assertTrue(self.service.enable_app(self.app_id)["success"])
+        self.assertNotIn(["list", "--app", "--columns=name,application"], self.flatpak.commands)
+
+    def test_poll_without_running_apps_skips_config_and_override_checks(self):
+        self.assertTrue(self.service.enable_app(self.app_id)["success"])
+        self.flatpak.commands.clear()
+        with patch.object(self.configuration, "get_flatpak_config") as get_config:
+            self.assertEqual(self.service.get_running_apps()["apps"], [])
+            get_config.assert_not_called()
+        self.assertEqual(self.flatpak.commands, [["ps", "--columns=application,active,pid"]])
 
     def test_running_detection_uses_owned_selector_state(self):
         self.assertTrue(self.service.enable_app(self.app_id)["success"])

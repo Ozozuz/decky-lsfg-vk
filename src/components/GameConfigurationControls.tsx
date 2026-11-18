@@ -31,13 +31,16 @@ export function GameConfigurationControls({
         autoFocus={autoFocusFpsMultiplier}
         onAutoFocus={onFpsMultiplierFocused}
       />
-      <ConfigurationSection config={config} onConfigChange={onConfigChange} />
-      {showWorkarounds && workaroundTarget && (
+      {showWorkarounds && workaroundTarget ? (
         <WorkaroundsSection
           appId={workaroundTarget.appid}
           nonSteam={workaroundTarget.nonSteam}
           onRepair={onRepairWorkaround}
-        />
+        >
+          <ConfigurationSection config={config} onConfigChange={onConfigChange} />
+        </WorkaroundsSection>
+      ) : (
+        <ConfigurationSection config={config} onConfigChange={onConfigChange} />
       )}
     </>
   );

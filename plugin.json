@@ -1,11 +1,11 @@
 {
-  "name": "Decky LSFG-VK",
-  "author": "Kurt Himebauch (xXJSONDeruloXx)",
+  "name": "Decky LSFG-VK - Ozozuz's Fork",
+  "author": "Ozozuz, based on work by Kurt Himebauch (xXJSONDeruloXx)",
   "flags": [],
   "api_version": 1,
   "publish": {
     "tags": ["installer", "vulkan", "lsfg", "framegen", "lossless", "scaling"],
-    "description": "Enable lossless scaling frame generation on the Steam Deck using lsfg-vk compatibility layer.",
-    "image": "https://raw.githubusercontent.com/xXJSONDeruloXx/decky-lsfg-vk/refs/heads/main/assets/Decky_LSFG-VK_Master_1.png"
+    "description": "Lossless Scaling frame generation on Steam Deck with expanded Flatpak support and a base FPS cap.",
+    "image": "https://raw.githubusercontent.com/Ozozuz/decky-lsfg-vk/refs/heads/main/assets/Decky_LSFG-VK_Master_1.png"
   }
 }
