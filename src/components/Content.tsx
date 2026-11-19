@@ -120,11 +120,8 @@ export function Content() {
   }, [runningWorkload, setupComplete]);
 
   useEffect(() => {
-    if (isInstalled) {
-      void reload();
-      void flatpak.reload();
-    }
-  }, [isInstalled, reload, flatpak.reload]);
+    if (isInstalled) void reload();
+  }, [isInstalled, reload]);
 
   useEffect(() => {
     if (!showDebugTab && tab === "ConfigFile") setTab(setupComplete ? "Steam" : "Settings");
@@ -259,7 +256,7 @@ export function Content() {
         activeTab={activeTab}
         onShowTab={(nextTab: string) => {
           if (!availableTabIds.has(nextTab)) return;
-          if (nextTab === "Flatpak" && activeTab !== "Flatpak") void flatpak.reload();
+          if (nextTab === "Flatpak" && activeTab !== "Flatpak") void flatpak.reload({ background: true });
           setTab(nextTab);
         }}
         tabs={tabs}

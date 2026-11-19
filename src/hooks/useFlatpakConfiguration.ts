@@ -27,14 +27,14 @@ export function useFlatpakConfiguration(enabled: boolean, runningShortcutAppId?:
   const [runningApps, setRunningApps] = useState<RunningFlatpakApp[]>([]);
   const [loading, setLoading] = useState(false);
   const [busyAppId, setBusyAppId] = useState("");
-  const operations = useRef(Promise.resolve<FlatpakOperationResult>({ success: true }));
+  const operations = useRef<Promise<unknown>>(Promise.resolve());
 
-  const reload = useCallback(async () => {
+  const loadApps = useCallback(async (background = false) => {
     if (!enabled) {
       setApps([]);
       return;
     }
-    setLoading(true);
+    if (!background) setLoading(true);
     try {
       const result = await getFlatpakApps();
       if (!result.success) throw new Error(result.error || "Could not list Flatpak applications");
@@ -42,9 +42,15 @@ export function useFlatpakConfiguration(enabled: boolean, runningShortcutAppId?:
     } catch (error) {
       showErrorToast("Flatpak unavailable", error instanceof Error ? error.message : String(error));
     } finally {
-      setLoading(false);
+      if (!background) setLoading(false);
     }
   }, [enabled]);
+
+  const reload = useCallback(({ background = false } = {}) => {
+    const next = operations.current.then(() => loadApps(background));
+    operations.current = next;
+    return next;
+  }, [loadApps]);
 
   const pollRunning = useCallback(async () => {
     if (!enabled) {
@@ -92,7 +98,7 @@ export function useFlatpakConfiguration(enabled: boolean, runningShortcutAppId?:
         return { success: false, error: message };
       } finally {
         if (refresh) {
-          await reload();
+          await loadApps();
           await pollRunning();
         }
         setBusyAppId("");
@@ -100,7 +106,7 @@ export function useFlatpakConfiguration(enabled: boolean, runningShortcutAppId?:
     });
     operations.current = next;
     return next;
-  }, [pollRunning, reload]);
+  }, [loadApps, pollRunning]);
 
   const enableApp = useCallback(async (appId: string) => (
     await operate(appId, () => enableFlatpakApp(appId))
