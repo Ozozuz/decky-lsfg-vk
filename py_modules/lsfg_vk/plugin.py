@@ -7,7 +7,6 @@ import decky
 from .configuration import ConfigurationService
 from .flatpak_profile_service import FlatpakProfileService
 from .flatpak_service import FlatpakService
-from .gamescope_metrics import read_frametime
 from .installation import InstallationService
 from .runtime_service import RuntimeService
 from .steam_service import SteamService
@@ -58,9 +57,6 @@ class Plugin:
 
     async def get_game_configs(self):
         return self.configuration_service.get_game_configs()
-
-    async def get_game_frametime(self, app_id: int):
-        return await asyncio.to_thread(read_frametime, self.configuration_service.user_home, app_id)
 
     async def update_global_config(self, config: Dict[str, Any]):
         return self.configuration_service.update_global_config(config)

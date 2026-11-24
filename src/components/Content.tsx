@@ -153,14 +153,12 @@ export function Content() {
     <FlatpakNowPlayingTab
       app={nowPlayingTarget.app}
       launcher={nowPlayingTarget.launcher}
-      showPerformance={tab === "NowPlaying"}
       onConfigChange={flatpak.updateConfig}
     />
   ) : nowPlayingTarget ? (
     <NowPlayingTab
       game={nowPlayingTarget.game}
       config={runningConfig}
-      showPerformance={tab === "NowPlaying"}
       onConfigChange={async (field, value) => {
         await saveFor(nowPlayingTarget.game.appid, { [field]: value });
       }}

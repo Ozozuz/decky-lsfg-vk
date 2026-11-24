@@ -8,11 +8,10 @@ import { NowPlayingSummary } from "./NowPlayingSummary";
 interface Props {
   app: FlatpakApp;
   launcher: GameTarget | null;
-  showPerformance: boolean;
   onConfigChange: (appId: string, config: Partial<LsfgConfig>) => Promise<boolean>;
 }
 
-export function FlatpakNowPlayingTab({ app, launcher, showPerformance, onConfigChange }: Props) {
+export function FlatpakNowPlayingTab({ app, launcher, onConfigChange }: Props) {
   if (!app.config) return null;
   const changeConfig = async (
     field: keyof LsfgConfig,
@@ -31,7 +30,6 @@ export function FlatpakNowPlayingTab({ app, launcher, showPerformance, onConfigC
           launcher ? "Flatpak" : null,
           `Controls: ${app.app_name} profile`,
         ].filter((detail): detail is string => detail !== null)}
-        performanceAppId={showPerformance ? launcher?.appid : undefined}
       />
       <FpsMultiplierControl config={app.config} onConfigChange={changeConfig} />
       <ConfigurationSection config={app.config} onConfigChange={changeConfig} />

@@ -1,20 +1,15 @@
 import { Field, PanelSection, PanelSectionRow } from "@decky/ui";
-import { NowPlayingPerformance } from "./NowPlayingPerformance";
 
 interface Props {
   title: string;
   details: string[];
-  performanceAppId?: string;
 }
 
-export function NowPlayingSummary({ title, details, performanceAppId }: Props) {
+export function NowPlayingSummary({ title, details }: Props) {
   return (
     <PanelSection>
       <PanelSectionRow>
-        <div>
-          <Field label={title} description={details.filter(Boolean).join(" | ")} />
-          {performanceAppId && <NowPlayingPerformance appId={performanceAppId} />}
-        </div>
+        <Field label={title} description={details.filter(Boolean).join(" | ")} />
       </PanelSectionRow>
     </PanelSection>
   );
