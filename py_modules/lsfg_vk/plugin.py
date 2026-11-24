@@ -169,7 +169,7 @@ class Plugin:
         return self.steam_service.get_branch_status()
 
     async def get_flatpak_apps(self):
-        return self.flatpak_profile_service.get_apps()
+        return await asyncio.to_thread(self.flatpak_profile_service.get_apps)
 
     async def enable_flatpak_app(self, flatpak_app_id: str):
         return self.flatpak_profile_service.enable_app(flatpak_app_id)

@@ -3,12 +3,12 @@ import { ConfigurationData } from "../config/configSchema";
 import type { GameTarget } from "../utils/gameTargets";
 import { sourceLabel } from "../utils/gameTargets";
 import { GameConfigurationControls } from "./GameConfigurationControls";
-import { NowPlayingPerformance } from "./NowPlayingPerformance";
 import { NowPlayingSummary } from "./NowPlayingSummary";
 
 interface Props {
   game: GameTarget;
   config: ConfigurationData;
+  showPerformance: boolean;
   onConfigChange: (
     fieldName: keyof ConfigurationData,
     value: boolean | number | string | string[],
@@ -22,6 +22,7 @@ function targetDescription(game: GameTarget): string {
 export function NowPlayingTab({
   game,
   config,
+  showPerformance,
   onConfigChange,
 }: Props) {
   return (
@@ -29,8 +30,8 @@ export function NowPlayingTab({
       <NowPlayingSummary
         title={game.name}
         details={[targetDescription(game), `Controls: ${game.name} profile`]}
+        performanceAppId={showPerformance ? game.appid : undefined}
       />
-      <NowPlayingPerformance appId={game.appid} />
       <GameConfigurationControls
         config={config}
         onConfigChange={onConfigChange}

@@ -10,6 +10,7 @@ from pathlib import Path
 _WORDS = struct.Struct("=II")
 _CONTROL = b"gamescope_control\0"
 _VERSION = 6
+_FRAMES_PER_SAMPLE = 12
 
 
 def _send(connection: socket.socket, object_id: int, opcode: int, body: bytes) -> None:
@@ -58,21 +59,34 @@ def _read_compositor(path: Path, app_id: int, deadline: float) -> float | None:
             # wl_registry.bind (new object 4), then gamescope_control.request_app_performance_stats.
             binding = _WORDS.pack(name, length) + _CONTROL.ljust(version_offset - 8, b"\0")
             _send(connection, 2, 0, binding + _WORDS.pack(_VERSION, 4))
-            _send(connection, 4, 6, struct.pack("=I", app_id))
+            request = struct.pack("=I", app_id)
+            _send(connection, 4, 6, request)
             break
         else:
             return None
 
-        for object_id, opcode, body in events:
-            if object_id == 1 and opcode == 0:
-                return None
-            if object_id != 4 or opcode != 3 or len(body) != 12:
-                continue
-            reported_app, low, high = struct.unpack("=III", body)
-            frametime_ns = (high << 32) | low
-            if reported_app == app_id and 0 < frametime_ns < 10_000_000_000:
-                return frametime_ns / 1_000_000
-        return None
+        frames = []
+        first_frame = True
+        try:
+            for object_id, opcode, body in events:
+                if object_id == 1 and opcode == 0:
+                    return None
+                if object_id != 4 or opcode != 3 or len(body) != 12:
+                    continue
+                reported_app, low, high = struct.unpack("=III", body)
+                if reported_app != app_id:
+                    continue
+                frametime_ns = (high << 32) | low
+                # The first interval can include time before the game resumed.
+                if not first_frame and 0 < frametime_ns < 10_000_000_000:
+                    frames.append(frametime_ns)
+                first_frame = False
+                if len(frames) >= _FRAMES_PER_SAMPLE or time.monotonic() >= deadline:
+                    break
+                _send(connection, 4, 6, request)
+        except TimeoutError:
+            pass
+        return sum(frames) / (len(frames) * 1_000_000) if frames else None
 
 
 def read_frametime(user_home: Path, app_id: object) -> float | None:
@@ -84,7 +98,7 @@ def read_frametime(user_home: Path, app_id: object) -> float | None:
         candidates = sorted(runtime_dir.glob("gamescope-*"))
     except OSError:
         return None
-    deadline = time.monotonic() + 0.4
+    deadline = time.monotonic() + 0.8
     for path in candidates:
         if time.monotonic() >= deadline:
             break
@@ -94,7 +108,7 @@ def read_frametime(user_home: Path, app_id: object) -> float | None:
         try:
             if not stat.S_ISSOCK(path.lstat().st_mode):
                 continue
-            value = _read_compositor(path, app_id, min(deadline, time.monotonic() + 0.25))
+            value = _read_compositor(path, app_id, min(deadline, time.monotonic() + 0.5))
         except (OSError, ValueError):
             continue
         if value is not None:

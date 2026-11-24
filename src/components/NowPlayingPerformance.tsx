@@ -1,5 +1,4 @@
 import { useQuickAccessVisible } from "@decky/api";
-import { Field, PanelSection, PanelSectionRow } from "@decky/ui";
 import { useEffect, useState } from "react";
 import { getGameFrametime } from "../api/lsfgApi";
 import t from "../i18n/i18n";
@@ -7,7 +6,7 @@ import t from "../i18n/i18n";
 const WINDOW_MS = 15_000;
 const SAMPLE_INTERVAL_MS = 500;
 const WIDTH = 240;
-const HEIGHT = 44;
+const HEIGHT = 28;
 
 type Sample = { time: number; frametime: number | null };
 
@@ -45,7 +44,7 @@ function LiveFrametime({ appId }: { appId: string }) {
 
   const latest = samples[samples.length - 1];
   const frametime = latest?.frametime;
-  const maximum = Math.max(33.33, ...samples.map((sample) => sample.frametime ?? 0));
+  const maximum = Math.max(66.67, ...samples.map((sample) => sample.frametime ?? 0));
   let hasPreviousPoint = false;
   const path = samples.map((sample) => {
     if (sample.frametime === null) {
@@ -60,25 +59,23 @@ function LiveFrametime({ appId }: { appId: string }) {
   }).join(" ");
 
   return (
-    <PanelSection>
-      <PanelSectionRow>
-        <Field
-          label={t("NOW_PLAYING_GAMESCOPE_PERFORMANCE", "Gamescope performance")}
-          description={frametime
-            ? t("NOW_PLAYING_GAMESCOPE_SAMPLE", "{fps} FPS · {ms} ms frame time")
-                .replace("{fps}", String(Math.round(1000 / frametime)))
-                .replace("{ms}", frametime.toFixed(1))
-            : t("NOW_PLAYING_GAMESCOPE_NO_SAMPLE", "No presentation sample available")}
-        />
-        <svg
-          viewBox={`0 0 ${WIDTH} ${HEIGHT}`}
-          style={{ width: "100%", display: "block", marginTop: "4px", background: "rgba(0, 0, 0, 0.2)" }}
-          role="img"
-          aria-label={t("NOW_PLAYING_FRAMETIME_HISTORY", "Frame time history over the last 15 seconds")}
-        >
-          <path d={path} fill="none" stroke="#72e079" strokeWidth="2" strokeLinecap="round" />
-        </svg>
-      </PanelSectionRow>
-    </PanelSection>
+    <div title={t("NOW_PLAYING_GAMESCOPE_PERFORMANCE", "Gamescope performance")}>
+      <div style={{ fontSize: "13px", lineHeight: "18px", fontVariantNumeric: "tabular-nums" }}>
+        {frametime
+          ? t("NOW_PLAYING_GAMESCOPE_SAMPLE", "{fps} FPS · {ms} ms frame time")
+              .replace("{fps}", String(Math.round(1000 / frametime)))
+              .replace("{ms}", frametime.toFixed(1))
+          : t("NOW_PLAYING_GAMESCOPE_NO_SAMPLE", "No presentation sample available")}
+      </div>
+      <svg
+        viewBox={`0 0 ${WIDTH} ${HEIGHT}`}
+        preserveAspectRatio="none"
+        style={{ width: "100%", height: HEIGHT, display: "block", background: "rgba(0, 0, 0, 0.2)" }}
+        role="img"
+        aria-label={t("NOW_PLAYING_FRAMETIME_HISTORY", "Frame time history over the last 15 seconds")}
+      >
+        <path d={path} fill="none" stroke="#72e079" strokeWidth="1.5" strokeLinecap="round" />
+      </svg>
+    </div>
   );
 }
