@@ -11,7 +11,8 @@ export const tabStyles = `
   }
 
   .lsfg-vk-tabs .lsfg-vk-tab-content {
-    padding-bottom: 96px; // workaround for in-game bottom bar padding behaving differently than in launcher, remove later?
+    /* Leave room for the in-game Quick Access footer. */
+    padding-bottom: 96px;
   }
 
   .lsfg-vk-tabs [role="tablist"] {
@@ -36,7 +37,10 @@ export const tabStyles = `
     margin: 0;
   }
 
-  /* Keep the tab strip steady when Steam moves focus between it and the panel. */
+  /* Steam can animate the track around the panels as well as the tab strip. */
+  .lsfg-vk-tabs :has(.lsfg-vk-tab-content),
+  .lsfg-vk-tabs .lsfg-vk-tab-content,
+  .lsfg-vk-tabs [role="tabpanel"],
   .lsfg-vk-tabs [role="tablist"],
   .lsfg-vk-tabs [role="tablist"] > div,
   .lsfg-vk-tabs [role="tablist"] > div > div,
