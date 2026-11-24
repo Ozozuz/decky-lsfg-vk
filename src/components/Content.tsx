@@ -1,5 +1,5 @@
 import { Tabs } from "@decky/ui";
-import { useEffect, useRef, useState, type FocusEvent, type ReactNode } from "react";
+import { useEffect, useRef, useState, type ReactNode } from "react";
 import { FaCube, FaExternalLinkAlt, FaFileAlt, FaGamepad, FaSteam, FaTools } from "react-icons/fa";
 import { useFlatpakConfiguration } from "../hooks/useFlatpakConfiguration";
 import { useGameConfiguration } from "../hooks/useGameConfiguration";
@@ -84,7 +84,6 @@ export function Content() {
   const flatpak = useFlatpakConfiguration(setupComplete, runningGame?.flatpakAppId);
   const [tab, setTab] = useState("Settings");
   const [showDebugTab, setShowDebugTab] = usePersistentBoolean(DEBUG_TAB_VISIBILITY_KEY, false);
-  const [contentFocused, setContentFocused] = useState(false);
   const previousRunningWorkload = useRef<string | null>(null);
   const previousNowPlayingTab = useRef<GameTabId>("Steam");
   const runningFlatpak = flatpak.runningApp;
@@ -242,20 +241,16 @@ export function Content() {
 
   const availableTabIds = new Set(tabs.map(({ id }) => id));
   const activeTab = availableTabIds.has(tab) ? tab : setupComplete ? "Steam" : "Settings";
-  const handleFocusCapture = (event: FocusEvent<HTMLDivElement>) => {
-    const focusedElement = event.target as HTMLElement | null;
-    setContentFocused(!focusedElement?.closest?.('[role="tab"]'));
-  };
 
   return (
     <div
-      className={`lsfg-vk-tabs${contentFocused ? " lsfg-vk-tabs--content-focused" : ""}`}
+      className="lsfg-vk-tabs"
       style={{ height: "95%", width: "300px", position: "fixed", marginTop: "-12px", overflow: "hidden" }}
-      onFocusCapture={handleFocusCapture}
     >
       <style>{tabStyles}</style>
       <Tabs
         activeTab={activeTab}
+        autoFocusContents={false}
         onShowTab={(nextTab: string) => {
           if (!availableTabIds.has(nextTab)) return;
           setTab(nextTab);

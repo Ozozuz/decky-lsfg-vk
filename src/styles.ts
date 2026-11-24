@@ -36,15 +36,13 @@ export const tabStyles = `
     margin: 0;
   }
 
-  .lsfg-vk-tabs--content-focused [role="tablist"][aria-orientation="horizontal"],
-  .lsfg-vk-tabs--content-focused [role="tablist"][aria-orientation="horizontal"] > div,
-  .lsfg-vk-tabs--content-focused [role="tablist"][aria-orientation="horizontal"] > div > div,
-  .lsfg-vk-tabs--content-focused [role="tablist"][aria-orientation="horizontal"] [role="tab"] {
+  /* Keep the tab strip steady when Steam moves focus between it and the panel. */
+  .lsfg-vk-tabs [role="tablist"],
+  .lsfg-vk-tabs [role="tablist"] > div,
+  .lsfg-vk-tabs [role="tablist"] > div > div,
+  .lsfg-vk-tabs [role="tablist"] [role="tab"] {
     animation: none !important;
     transition: none !important;
-  }
-
-  .lsfg-vk-tabs--content-focused [role="tablist"][aria-orientation="horizontal"] > div > div {
     scroll-behavior: auto !important;
     scroll-snap-type: none !important;
   }
