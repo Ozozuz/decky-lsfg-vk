@@ -164,6 +164,7 @@ export const setFlatpakWorkaroundState = callable<[string, Partial<WorkaroundSta
 export const removeFlatpakApp = callable<[string], FlatpakAppResult>("remove_flatpak_app");
 export const getRunningFlatpakApps = callable<[], RunningFlatpakAppsResult>("get_running_flatpak_apps");
 export const getGameConfigs = callable<[], GameConfigsResult>("get_game_configs");
+export const getGameFrametime = callable<[number], number | null>("get_game_frametime");
 export const getInstalledGames = callable<[], InstalledGamesResult>("get_installed_games");
 export const updateGameConfig = callable<[string, string, Partial<LsfgConfig>, boolean?], GameConfigResult>("update_game_config");
 export const resetGameConfig = callable<[string], GameConfigResult>("reset_game_config");
