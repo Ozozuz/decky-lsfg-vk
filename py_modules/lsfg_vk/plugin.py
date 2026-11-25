@@ -1,3 +1,4 @@
+import asyncio
 import os
 from typing import Any, Dict
 
@@ -6,6 +7,7 @@ import decky
 from .configuration import ConfigurationService
 from .flatpak_profile_service import FlatpakProfileService
 from .flatpak_service import FlatpakService
+from .gamescope_metrics import read_flatpak_frametime, read_steam_frametime
 from .installation import InstallationService
 from .runtime_service import RuntimeService
 from .steam_service import SteamService
@@ -164,7 +166,7 @@ class Plugin:
         return self.steam_service.get_branch_status()
 
     async def get_flatpak_apps(self):
-        return self.flatpak_profile_service.get_apps()
+        return await asyncio.to_thread(self.flatpak_profile_service.get_apps)
 
     async def enable_flatpak_app(self, flatpak_app_id: str):
         return self.flatpak_profile_service.enable_app(flatpak_app_id)
@@ -183,6 +185,13 @@ class Plugin:
 
     async def get_running_flatpak_apps(self):
         return self.flatpak_profile_service.get_running_apps()
+
+    async def get_flatpak_frametime(self, flatpak_app_id: str):
+        self.flatpak_service._validate_app_id(flatpak_app_id)
+        return await asyncio.to_thread(read_flatpak_frametime, self.flatpak_service.user_home, flatpak_app_id)
+
+    async def get_steam_frametime(self, steam_app_id: str):
+        return await asyncio.to_thread(read_steam_frametime, self.steam_service.user_home, steam_app_id)
 
     async def _main(self):
         repair = self.wrapper_service.repair()

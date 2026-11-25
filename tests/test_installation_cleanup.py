@@ -17,7 +17,7 @@ from lsfg_vk.installation import InstallationService
 
 
 class InstallationCleanupTests(unittest.TestCase):
-    def test_uninstall_preserves_untracked_files_and_profiles(self):
+    def test_uninstall_removes_profiles_and_preserves_untracked_installation_files(self):
         with tempfile.TemporaryDirectory() as temporary:
             home = Path(temporary) / "home" / "deck"
             service = InstallationService.__new__(InstallationService)
@@ -53,7 +53,9 @@ class InstallationCleanupTests(unittest.TestCase):
 
             self.assertTrue(result["success"])
             self.assertTrue(service.lib_file.exists())
-            self.assertTrue(service.config_file_path.exists())
+            self.assertFalse(service.config_file_path.exists())
+            self.assertIn(str(service.config_file_path), result["removed_files"])
+            self.assertIn("profiles removed", result["message"])
             self.assertTrue(service.legacy_script_path.exists())
             self.assertTrue(unrelated.exists())
             self.assertTrue(service.local_bin_dir.exists())

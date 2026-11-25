@@ -310,10 +310,12 @@ class InstallationService(BaseService):
                     removed.append(str(path))
                 elif path.exists() or path.is_symlink():
                     preserved.append(path)
+            if self._remove_if_exists(self.config_file_path):
+                removed.append(str(self.config_file_path))
             self._ownership_path.unlink(missing_ok=True)
             message = (
-                "Only plugin-owned LSFG-VK files were removed. Other installation files and profiles were kept."
-                if preserved else "LSFG-VK plugin files removed. Profiles were kept."
+                "LSFG-VK plugin files and profiles removed. Other installation files were kept."
+                if preserved else "LSFG-VK plugin files and profiles removed."
             )
             return self._success_response(UninstallationResponse, message, removed_files=removed or None)
         except Exception as error:

@@ -1,4 +1,4 @@
-# Decky LSFG-VK - Ozozuz's Fork
+# Decky LSFG-VK - Ozozuz
 
 A community edition of [Decky LSFG-VK](https://github.com/xXJSONDeruloXx/decky-lsfg-vk), maintained by [Ozozuz](https://github.com/Ozozuz). It brings Lossless Scaling frame generation to Steam Deck through Decky Loader and the upstream [lsfg-vk Vulkan layer](https://lsfg-vk.dev/).
 
@@ -6,6 +6,7 @@ A community edition of [Decky LSFG-VK](https://github.com/xXJSONDeruloXx/decky-l
 
 - **Flatpak support** for Freedesktop 24.08, 25.08, and 26.08, including compatible GNOME and KDE runtimes. The plugin sets up user-level Flathub when needed, reuses existing extensions, and preserves unrelated Flatpak overrides.
 - **Base FPS Cap** sits next to the frame generation multiplier. It limits the game's original FPS in DXVK and VKD3D-Proton titles. Restart the game after changing it, or restart the launcher for Flatpak titles.
+- **Now Playing** shows current Gamescope FPS and a 15-second frame-time graph for Steam, non-Steam and Flatpak games in Gaming Mode.
 - **Deck navigation and profiles** make Flatpak profiles easier to browse and keep edits tied to the profile you opened. Flatpak apps can also be enabled in bulk.
 - **Safer installation** validates the bundled files and configuration before replacing an existing installation.
 
@@ -14,13 +15,19 @@ A community edition of [Decky LSFG-VK](https://github.com/xXJSONDeruloXx/decky-l
 1. In Steam, install [Lossless Scaling](https://store.steampowered.com/app/993090/Lossless_Scaling/) and select the **lsfg-vk** branch under **Properties → Game Versions & Betas**.
 2. Download the plugin ZIP from [Ozozuz's GitHub Releases](https://github.com/Ozozuz/decky-lsfg-vk/releases).
 3. In Decky, enable **Developer Mode** and choose **Developer → Install Plugin from ZIP**.
-4. Open **Decky LSFG-VK - Ozozuz's Fork** and select **Install lsfg-vk** if setup is needed. Use the **Steam**, **Non-Steam**, or **Flatpak** tab to enable frame generation for the next launch.
+4. Open **Decky LSFG-VK - Ozozuz** and select **Install lsfg-vk** if setup is needed. Use the **Steam**, **Non-Steam**, or **Flatpak** tab to enable frame generation for the next launch.
 
-### Upgrading from 0.14.4-flatpak26.08.7 or earlier
+**Uninstall LSFG-VK** inside the plugin removes the plugin-managed runtime and deletes the active profile configuration in `~/.config/lsfg-vk/conf.toml`. Installation files whose ownership the plugin cannot verify are preserved.
 
-In Desktop Mode, move the existing plugin folder out of `~/homebrew/plugins/` and restart the Steam Deck before installing the new ZIP. Depending on the installed version, the folder may be named **Decky LSFG-VK** or **Decky LSFG-VK - Ozozuz's Fork**. The older plugin's Decky uninstall action can delete profiles. Keep the moved folder as a backup and use one installation at a time.
+### Deploying a test build
 
-Starting with 0.14.4-flatpak26.08.8, Decky can remove or replace the plugin while preserving the LSFG-VK runtime and profiles. To remove the plugin-managed runtime, use **Uninstall LSFG-VK** inside the plugin first. That action keeps the saved profiles and preserves installation files whose ownership the plugin cannot verify.
+With the project dependencies installed and the target Deck in Game Mode with SSH enabled, run `./scripts/deploy-to-deck.sh deck@steamdeck`. The script builds the ZIP, copies it to `~/Downloads` and reloads the existing plugin. It backs up the replaced plugin under `~/homebrew/.lsfg-deploy-*/original` and restores it if the reload fails.
+
+The host key must be trusted by SSH. Use `--known-hosts FILE` if the verified key is stored elsewhere. For password authentication, export `DECK_PASSWORD` in the current shell to use it with `sshpass` and sudo. Use `--build-only` to create the ZIP under `.deploy/` without connecting to the Deck.
+
+## TODO
+
+- Measure and display base FPS before frame generation.
 
 ## Feedback and credits
 

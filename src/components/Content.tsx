@@ -152,12 +152,14 @@ export function Content() {
 
   const nowPlaying = nowPlayingTarget?.kind === "flatpak" ? (
     <FlatpakNowPlayingTab
+      active={tab === "NowPlaying"}
       app={nowPlayingTarget.app}
       launcher={nowPlayingTarget.launcher}
       onConfigChange={flatpak.updateConfig}
     />
   ) : nowPlayingTarget ? (
     <NowPlayingTab
+      active={tab === "NowPlaying"}
       game={nowPlayingTarget.game}
       config={runningConfig}
       onConfigChange={async (field, value) => {
@@ -256,7 +258,6 @@ export function Content() {
         activeTab={activeTab}
         onShowTab={(nextTab: string) => {
           if (!availableTabIds.has(nextTab)) return;
-          if (nextTab === "Flatpak" && activeTab !== "Flatpak") void flatpak.reload({ background: true });
           setTab(nextTab);
         }}
         tabs={tabs}

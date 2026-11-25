@@ -104,7 +104,6 @@ class InstallationConfigTests(unittest.TestCase):
         self.service.cli_file.parent.mkdir(parents=True, exist_ok=True)
         self.service.cli_file.write_bytes(b"manual")
         self.service._install_archive(self._archive())
-        config = self.service.config_file_path.read_bytes()
         self.service.lib_x86_file.write_bytes(b"user replacement")
 
         result = self.service.uninstall()
@@ -114,7 +113,7 @@ class InstallationConfigTests(unittest.TestCase):
         self.assertFalse(self.service.lib_file.exists())
         self.assertTrue(self.service.cli_file.exists())
         self.assertEqual(self.service.lib_x86_file.read_bytes(), b"user replacement")
-        self.assertEqual(self.service.config_file_path.read_bytes(), config)
+        self.assertFalse(self.service.config_file_path.exists())
 
     def test_installation_backs_up_an_unversioned_configuration(self):
         self.service.config_dir.mkdir(parents=True)

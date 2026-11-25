@@ -1,3 +1,4 @@
+import { useQuickAccessVisible } from "@decky/api";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   enableFlatpakApp,
@@ -28,6 +29,8 @@ export function useFlatpakConfiguration(enabled: boolean, runningShortcutAppId?:
   const [loading, setLoading] = useState(false);
   const [busyAppId, setBusyAppId] = useState("");
   const operations = useRef<Promise<unknown>>(Promise.resolve());
+  const quickAccessVisible = useQuickAccessVisible();
+  const previousQuickAccessVisible = useRef<boolean | null>(null);
 
   const loadApps = useCallback(async (background = false) => {
     if (!enabled) {
@@ -38,15 +41,18 @@ export function useFlatpakConfiguration(enabled: boolean, runningShortcutAppId?:
     try {
       const result = await getFlatpakApps();
       if (!result.success) throw new Error(result.error || "Could not list Flatpak applications");
-      setApps(result.apps || []);
+      const next = result.apps || [];
+      setApps((current) => JSON.stringify(current) === JSON.stringify(next) ? current : next);
     } catch (error) {
-      showErrorToast("Flatpak unavailable", error instanceof Error ? error.message : String(error));
+      if (!background) {
+        showErrorToast("Flatpak unavailable", error instanceof Error ? error.message : String(error));
+      }
     } finally {
       if (!background) setLoading(false);
     }
   }, [enabled]);
 
-  const reload = useCallback(({ background = false } = {}) => {
+  const reload = useCallback((background = false) => {
     const next = operations.current.then(() => loadApps(background));
     operations.current = next;
     return next;
@@ -59,13 +65,22 @@ export function useFlatpakConfiguration(enabled: boolean, runningShortcutAppId?:
     }
     try {
       const result = await getRunningFlatpakApps();
-      if (result.success) setRunningApps(result.apps || []);
+      if (result.success) {
+        const next = result.apps || [];
+        setRunningApps((current) => JSON.stringify(current) === JSON.stringify(next) ? current : next);
+      }
     } catch {}
   }, [enabled]);
 
   useEffect(() => {
     void reload();
   }, [reload]);
+
+  useEffect(() => {
+    const reopened = quickAccessVisible && previousQuickAccessVisible.current === false;
+    previousQuickAccessVisible.current = quickAccessVisible;
+    if (enabled && reopened) void reload(true);
+  }, [enabled, quickAccessVisible, reload]);
 
   useEffect(() => {
     let stopped = false;

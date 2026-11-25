@@ -107,8 +107,9 @@ export function useInstallation(
         return;
       }
       await checkInstallation();
-      setInstallationStatus(result.message || "LSFG-VK profiles kept");
-      showSuccessToast("LSFG-VK", result.message || "Profiles were kept.");
+      const message = result.message || "LSFG-VK plugin files and profiles removed.";
+      setInstallationStatus(message);
+      showSuccessToast("LSFG-VK", message);
     } catch (error) {
       setInstallationStatus(`Uninstallation failed: ${error}`);
       showUninstallErrorToast(String(error));

@@ -74,7 +74,7 @@ class PluginMigrationTests(unittest.TestCase):
         finally:
             self._restore(previous_decky, previous_tomllib, previous_plugin)
 
-    def test_explicit_runtime_uninstall_keeps_profiles(self):
+    def test_explicit_runtime_uninstall_calls_installation_cleanup(self):
         Plugin, _decky, previous_decky, previous_tomllib, previous_plugin = self._load_plugin()
         try:
             plugin = Plugin.__new__(Plugin)
