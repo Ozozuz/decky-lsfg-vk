@@ -1,3 +1,4 @@
+import { useQuickAccessVisible } from "@decky/api";
 import { useCallback, useEffect, useState } from "react";
 import {
   checkLsfgVkInstalled,
@@ -24,6 +25,7 @@ export function useInstallation(
   const [steamBranchStatus, setSteamBranchStatus] = useState<SteamBranchStatus | null>(null);
   const [isInstalling, setIsInstalling] = useState(false);
   const [isUninstalling, setIsUninstalling] = useState(false);
+  const quickAccessVisible = useQuickAccessVisible();
 
   const checkInstallation = useCallback(async () => {
     try {
@@ -50,8 +52,8 @@ export function useInstallation(
   }, []);
 
   useEffect(() => {
-    void checkInstallation();
-  }, [checkInstallation]);
+    if (quickAccessVisible) void checkInstallation();
+  }, [checkInstallation, quickAccessVisible]);
 
   const setupComplete =
     isInstalled &&
@@ -61,14 +63,14 @@ export function useInstallation(
     !steamBranchStatus.needs_switch;
 
   useEffect(() => {
-    if (setupComplete || isInstalling || isUninstalling) return;
+    if (!quickAccessVisible || setupComplete || isInstalling || isUninstalling) return;
 
     const interval = window.setInterval(() => {
       void checkInstallation();
     }, 2000);
 
     return () => window.clearInterval(interval);
-  }, [checkInstallation, isInstalling, isUninstalling, setupComplete]);
+  }, [checkInstallation, isInstalling, isUninstalling, quickAccessVisible, setupComplete]);
 
   const install = async () => {
     setIsInstalling(true);

@@ -79,10 +79,7 @@ class ConfigurationService(BaseService):
             data = self._get_profile_data()
             merged_config = {**data["global_config"], **config}
             validated = self._public_config(merged_config)
-            data["global_config"] = {
-                "dll": validated["dll"],
-                "no_fp16": validated["no_fp16"],
-            }
+            data["global_config"].update(dll=validated["dll"], no_fp16=validated["no_fp16"])
             self._save_profile_data(data)
             return self._success_response(dict, global_config=dict(data["global_config"]))
         except Exception as error:

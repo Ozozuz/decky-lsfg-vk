@@ -69,7 +69,6 @@ export function useGameConfiguration() {
     profileOperations.current = next;
     return next;
   }, []);
-  const previousQuickAccessVisible = useRef<boolean | null>(null);
   const quickAccessVisible = useQuickAccessVisible();
 
   const load = useCallback(async () => {
@@ -89,15 +88,12 @@ export function useGameConfiguration() {
   }, []);
 
   useEffect(() => {
-    const initialLoad = previousQuickAccessVisible.current === null;
-    const becameVisible = quickAccessVisible && previousQuickAccessVisible.current === false;
-    previousQuickAccessVisible.current = quickAccessVisible;
-    if (initialLoad || becameVisible) void load();
+    if (quickAccessVisible) void load();
   }, [load, quickAccessVisible]);
 
   useEffect(() => {
+    if (!quickAccessVisible || !configsLoaded) return;
     const poll = () => {
-      if (!configsLoaded) return;
       const app = Router.MainRunningApp as any;
       if (!app?.appid) return setRunningGame(null);
       const appid = String(app.appid);
@@ -127,7 +123,7 @@ export function useGameConfiguration() {
     poll();
     const interval = window.setInterval(poll, 2000);
     return () => window.clearInterval(interval);
-  }, [configsLoaded, games, installedGames, workaroundApps]);
+  }, [configsLoaded, games, installedGames, quickAccessVisible, workaroundApps]);
 
   const targets = useMemo<GameTarget[]>(() => {
     return mergeGameTargets(games, installedGames, workaroundApps, runningGame);

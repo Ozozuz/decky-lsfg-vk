@@ -1,7 +1,7 @@
 import { ButtonItem, ConfirmModal, DialogButton, Field, Focusable, PanelSection, PanelSectionRow, gamepadDialogClasses, showModal } from "@decky/ui";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { FaArrowLeft } from "react-icons/fa";
-import type { FlatpakApp, LsfgConfig, WorkaroundState } from "../api/lsfgApi";
+import type { FlatpakApp, LsfgConfig, RunningFlatpakApp, WorkaroundState } from "../api/lsfgApi";
 import { CollapsibleItemGroup, collapsibleItemGroupStyles, usePersistentCollapsed } from "./CollapsibleItemGroup";
 import { ConfigurationSection } from "./ConfigurationSection";
 import { FlatpakWorkaroundsSection } from "./FlatpakWorkaroundsSection";
@@ -10,7 +10,7 @@ import { ProfileDetails } from "./ProfileDetails";
 
 interface Props {
   apps: FlatpakApp[];
-  runningApp: FlatpakApp | null;
+  runningApps: RunningFlatpakApp[];
   loading: boolean;
   busyAppId: string;
   onRefresh: () => Promise<void>;
@@ -18,6 +18,7 @@ interface Props {
   onEnableAll: () => Promise<void>;
   onRemove: (appId: string) => Promise<boolean>;
   onRemoveAll: () => Promise<void>;
+  onStop: (appId: string) => Promise<void>;
   onConfigChange: (appId: string, config: Partial<LsfgConfig>) => Promise<boolean>;
   onWorkaroundChange: (appId: string, field: keyof WorkaroundState, value: boolean | number) => Promise<boolean>;
 }
@@ -27,7 +28,7 @@ const AVAILABLE_COLLAPSED_KEY = "lsfg-flatpak-available-collapsed-v2";
 
 export function FlatpakTab({
   apps,
-  runningApp,
+  runningApps,
   loading,
   busyAppId,
   onRefresh,
@@ -35,6 +36,7 @@ export function FlatpakTab({
   onEnableAll,
   onRemove,
   onRemoveAll,
+  onStop,
   onConfigChange,
   onWorkaroundChange,
 }: Props) {
@@ -115,6 +117,7 @@ export function FlatpakTab({
       />,
     );
   };
+  const runningAppIds = new Set(runningApps.map(({ app_id }) => app_id));
   const itemFor = (app: FlatpakApp) => ({
     id: app.app_id,
     label: app.app_name,
@@ -130,7 +133,7 @@ export function FlatpakTab({
           items={enabledApps.map((app) => ({
             id: app.app_id,
             label: app.app_name,
-            description: `${app.app_id}${app.app_id === runningApp?.app_id ? " · Running" : ""}`,
+            description: `${app.app_id}${runningAppIds.has(app.app_id) ? " · Running" : ""}`,
           }))}
           collapsed={enabledCollapsed}
           onToggle={toggleEnabled}
@@ -206,7 +209,7 @@ export function FlatpakTab({
     selected.app_id,
     selected.runtime_branch ? `runtime ${selected.runtime_branch}` : null,
     selected.enabled ? `profile ${selected.profile}` : null,
-    selected.app_id === runningApp?.app_id ? "Running" : null,
+    runningAppIds.has(selected.app_id) ? "Running" : null,
   ].filter(Boolean).join(" · ");
 
   const changeConfig = async (
@@ -290,6 +293,26 @@ export function FlatpakTab({
             </ButtonItem>
           </PanelSectionRow>
         </>
+      )}
+      {runningAppIds.has(selected.app_id) && (
+        <PanelSectionRow>
+          <ButtonItem
+            layout="below"
+            disabled={Boolean(busyAppId)}
+            onClick={() => showModal(
+              <ConfirmModal
+                strTitle={`Force close ${selected.app_name}?`}
+                strDescription="Save and exit any games first. This also closes games running through this app."
+                strOKButtonText="Force close"
+                strCancelButtonText="Cancel"
+                onOK={() => void onStop(selected.app_id)}
+                onCancel={() => {}}
+              />,
+            )}
+          >
+            Force close Flatpak app
+          </ButtonItem>
+        </PanelSectionRow>
       )}
       <ProfileDetails description={profileDescription} />
     </Focusable>

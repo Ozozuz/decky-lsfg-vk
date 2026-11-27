@@ -1,5 +1,6 @@
 import sys
 import tempfile
+import tomllib
 import types
 import unittest
 from pathlib import Path
@@ -126,6 +127,22 @@ preserve_swapchain_image_count = false
         self.assertTrue(result["global_config"]["no_fp16"])
         self.assertTrue(data["global_config"]["no_fp16"])
         self.assertEqual(data["profiles"]["Steam Game"]["multiplier"], 2)
+
+    def test_profile_and_global_edits_preserve_logging_settings(self):
+        self.service.config_file_path.parent.mkdir(parents=True)
+        content = (
+            'version = 2\n[global]\nlog_level = "debug"\nlog_file = "/tmp/lsfg 🎮.log"\n'
+        )
+        self.service.config_file_path.write_text(content, encoding="utf-8")
+
+        for result in (
+            self.service.update_game_config("123", "Steam Game", {"multiplier": 3}),
+            self.service.update_global_config({"no_fp16": True}),
+        ):
+            self.assertTrue(result["success"])
+        saved = tomllib.loads(self.service.config_file_path.read_text(encoding="utf-8"))
+        self.assertEqual(saved["global"]["log_level"], "debug")
+        self.assertEqual(saved["global"]["log_file"], "/tmp/lsfg 🎮.log")
 
     def test_profile_update_cannot_overwrite_global_fp16_setting(self):
         self.service.update_global_config({"no_fp16": True})

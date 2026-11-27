@@ -28,13 +28,14 @@ PROFILE_DEFAULTS: Dict[str, Any] = {
     "preserve_swapchain_image_count": False,
 }
 GLOBAL_DEFAULTS: Dict[str, Any] = {"dll": "", "no_fp16": False}
+LOG_CONFIG_FIELDS = ("log_level", "log_file")
 
 
 def _toml_value(value: Any) -> str:
     if isinstance(value, bool):
         return str(value).lower()
     if isinstance(value, str):
-        return json.dumps(value)
+        return json.dumps(value, ensure_ascii=False).replace("\x7f", "\\u007f")
     if isinstance(value, list):
         return "[ " + ", ".join(_toml_value(item) for item in value) + " ]"
     return str(value)
@@ -94,6 +95,9 @@ class ConfigurationManager:
         if global_config["dll"]:
             lines.append(f"dll = {_toml_value(global_config['dll'])}")
         lines.append(f"allow_fp16 = {_toml_value(not bool(global_config['no_fp16']))}")
+        for field in LOG_CONFIG_FIELDS:
+            if field in global_config:
+                lines.append(f"{field} = {_toml_value(global_config[field])}")
         profiles = sorted(profile_data["profiles"].items()) or [("", {})]
         for name, raw in profiles:
             config = ConfigurationManager.validate_config({**raw, **global_config})
@@ -120,6 +124,7 @@ class ConfigurationManager:
         global_config = {
             "dll": str(raw_global.get("dll", "") or ""),
             "no_fp16": not bool(raw_global.get("allow_fp16", True)),
+            **{field: raw_global[field] for field in LOG_CONFIG_FIELDS if field in raw_global},
         }
         profiles: Dict[str, Dict[str, Any]] = {}
         for profile in data.get("profile", []):

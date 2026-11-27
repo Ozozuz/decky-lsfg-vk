@@ -6,6 +6,7 @@ import {
   getRunningFlatpakApps,
   removeFlatpakApp,
   setFlatpakWorkaroundState,
+  stopFlatpakApp,
   updateFlatpakConfig,
   type FlatpakApp,
   type LsfgConfig,
@@ -29,6 +30,7 @@ export function useFlatpakConfiguration(enabled: boolean, runningShortcutAppId?:
   const [loading, setLoading] = useState(false);
   const [busyAppId, setBusyAppId] = useState("");
   const operations = useRef<Promise<unknown>>(Promise.resolve());
+  const runningRequest = useRef(0);
   const quickAccessVisible = useQuickAccessVisible();
   const previousQuickAccessVisible = useRef<boolean | null>(null);
 
@@ -59,13 +61,14 @@ export function useFlatpakConfiguration(enabled: boolean, runningShortcutAppId?:
   }, [loadApps]);
 
   const pollRunning = useCallback(async () => {
+    const request = ++runningRequest.current;
     if (!enabled) {
       setRunningApps([]);
       return;
     }
     try {
       const result = await getRunningFlatpakApps();
-      if (result.success) {
+      if (result.success && request === runningRequest.current) {
         const next = result.apps || [];
         setRunningApps((current) => JSON.stringify(current) === JSON.stringify(next) ? current : next);
       }
@@ -83,18 +86,25 @@ export function useFlatpakConfiguration(enabled: boolean, runningShortcutAppId?:
   }, [enabled, quickAccessVisible, reload]);
 
   useEffect(() => {
+    if (!enabled) {
+      setRunningApps([]);
+      return;
+    }
+    if (!quickAccessVisible) return;
+
     let stopped = false;
     let timer: number | undefined;
     const poll = async () => {
       await pollRunning();
-      if (enabled && !stopped) timer = window.setTimeout(() => void poll(), 2000);
+      if (!stopped) timer = window.setTimeout(() => void poll(), 2000);
     };
     void poll();
     return () => {
       stopped = true;
+      runningRequest.current++;
       window.clearTimeout(timer);
     };
-  }, [enabled, pollRunning]);
+  }, [enabled, pollRunning, quickAccessVisible]);
 
   const operate = useCallback((
     appId: string,
@@ -131,6 +141,17 @@ export function useFlatpakConfiguration(enabled: boolean, runningShortcutAppId?:
     await flushWorkaroundSaves("flatpak:" + appId);
     return (await operate(appId, () => removeFlatpakApp(appId))).success;
   }, [operate]);
+
+  const stopApp = useCallback(async (appId: string) => {
+    if (!(await flushWorkaroundSaves("flatpak:" + appId))) return;
+    await operate(appId, async () => {
+      try {
+        return await stopFlatpakApp(appId);
+      } finally {
+        await pollRunning();
+      }
+    }, false);
+  }, [operate, pollRunning]);
 
   const enableAll = useCallback(async (): Promise<void> => {
     const available = apps.filter((app) => (
@@ -205,6 +226,7 @@ export function useFlatpakConfiguration(enabled: boolean, runningShortcutAppId?:
     enableAll,
     removeApp,
     removeAll,
+    stopApp,
     updateConfig,
     updateWorkarounds,
   };

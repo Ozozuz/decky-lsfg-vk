@@ -162,6 +162,7 @@ export const enableFlatpakApp = callable<[string], FlatpakAppResult>("enable_fla
 export const updateFlatpakConfig = callable<[string, Partial<LsfgConfig>], FlatpakAppResult>("update_flatpak_config");
 export const setFlatpakWorkaroundState = callable<[string, Partial<WorkaroundState>], WorkaroundStateResult>("set_flatpak_workaround_state");
 export const removeFlatpakApp = callable<[string], FlatpakAppResult>("remove_flatpak_app");
+export const stopFlatpakApp = callable<[string], ApiResult>("stop_flatpak_app");
 export const getRunningFlatpakApps = callable<[], RunningFlatpakAppsResult>("get_running_flatpak_apps");
 export const getFlatpakFrametime = callable<[string], number | null>("get_flatpak_frametime");
 export const getSteamFrametime = callable<[string], number | null>("get_steam_frametime");

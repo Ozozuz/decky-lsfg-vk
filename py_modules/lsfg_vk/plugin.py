@@ -183,8 +183,11 @@ class Plugin:
     async def remove_flatpak_app(self, flatpak_app_id: str):
         return self.flatpak_profile_service.remove_app(flatpak_app_id)
 
+    async def stop_flatpak_app(self, flatpak_app_id: str):
+        return await asyncio.to_thread(self.flatpak_service.stop_app, flatpak_app_id)
+
     async def get_running_flatpak_apps(self):
-        return self.flatpak_profile_service.get_running_apps()
+        return await asyncio.to_thread(self.flatpak_profile_service.get_running_apps)
 
     async def get_flatpak_frametime(self, flatpak_app_id: str):
         self.flatpak_service._validate_app_id(flatpak_app_id)

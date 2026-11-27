@@ -4,7 +4,7 @@ import tempfile
 import types
 import unittest
 from pathlib import Path
-from unittest.mock import Mock
+from unittest.mock import Mock, call
 
 
 sys.modules.setdefault(
@@ -38,6 +38,37 @@ class FlatpakServiceTests(unittest.TestCase):
         self.apps = {"com.example.Game": "Example Game"}
         self.dll_dir = self.home / ".local/share/Steam/steamapps/common/Lossless Scaling"
         self.service._dll_directory = Mock(return_value=self.dll_dir)
+
+    def test_stop_app_targets_only_the_selected_flatpak(self):
+        command = Mock(side_effect=[self._result("com.example.Other\ncom.example.Game\n"), self._result()])
+        self.service._run_flatpak_command = command
+        self.assertTrue(self.service.stop_app("com.example.Game")["success"])
+        self.assertEqual(command.call_args_list, [
+            call(["ps", "--columns=application"], capture_output=True, text=True),
+            call(["kill", "com.example.Game"], capture_output=True, text=True),
+        ])
+
+    def test_stop_app_skips_kill_when_the_selected_app_is_absent(self):
+        command = Mock(return_value=self._result("com.example.GameEditor\n"))
+        self.service._run_flatpak_command = command
+        self.assertTrue(self.service.stop_app("com.example.Game")["success"])
+        command.assert_called_once_with(["ps", "--columns=application"], capture_output=True, text=True)
+
+    def test_stop_app_handles_exit_between_check_and_kill(self):
+        self.service._run_flatpak_command = Mock(side_effect=[
+            self._result("com.example.Game\n"),
+            self._result(returncode=1, stderr="App is not running"),
+            self._result(),
+        ])
+        self.assertEqual(self.service.stop_app("com.example.Game")["message"], "Flatpak application is already closed")
+
+    def test_stop_app_rejects_invalid_id_and_reports_a_failure(self):
+        running = self._result("com.example.Game\n")
+        command = Mock(side_effect=[running, self._result(returncode=1, stderr="Permission denied"), running])
+        self.service._run_flatpak_command = command
+        self.assertFalse(self.service.stop_app("--help")["success"])
+        command.assert_not_called()
+        self.assertEqual(self.service.stop_app("com.example.Game")["error"], "Permission denied")
 
     def tearDown(self):
         self.tempdir.cleanup()

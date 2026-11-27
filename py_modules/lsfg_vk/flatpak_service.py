@@ -689,6 +689,31 @@ class FlatpakService(BaseService):
         except Exception as error:
             return self._error_response(dict, str(error), apps=[])
 
+    def stop_app(self, app_id: str):
+        def is_running() -> bool:
+            result = self._run_flatpak_command(
+                ["ps", "--columns=application"], capture_output=True, text=True,
+            )
+            if result.returncode != 0:
+                raise OSError(result.stderr.strip() or "Could not inspect running Flatpak applications")
+            return any(line.strip() == app_id for line in result.stdout.splitlines())
+
+        try:
+            app_id = self._validate_app_id(app_id)
+            already_closed = "Flatpak application is already closed"
+            if not is_running():
+                return self._success_response(dict, already_closed)
+            result = self._run_flatpak_command(
+                ["kill", app_id], capture_output=True, text=True,
+            )
+            if result.returncode != 0:
+                if not is_running():
+                    return self._success_response(dict, already_closed)
+                raise OSError(result.stderr.strip() or "Could not close Flatpak application")
+            return self._success_response(dict, "Flatpak application closed")
+        except Exception as error:
+            return self._error_response(dict, str(error))
+
     def prepare_app(self, app_id: str, workarounds: Optional[dict] = None):
         try:
             app_id = self._validate_app_id(app_id)

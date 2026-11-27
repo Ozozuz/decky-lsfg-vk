@@ -217,7 +217,7 @@ export function Content() {
           content: tabContent(
             <FlatpakTab
               apps={flatpak.apps}
-              runningApp={runningFlatpak}
+              runningApps={flatpak.runningApps}
               loading={flatpak.loading}
               busyAppId={flatpak.busyAppId}
               onRefresh={flatpak.reload}
@@ -225,6 +225,7 @@ export function Content() {
               onEnableAll={flatpak.enableAll}
               onRemove={flatpak.removeApp}
               onRemoveAll={flatpak.removeAll}
+              onStop={flatpak.stopApp}
               onConfigChange={flatpak.updateConfig}
               onWorkaroundChange={flatpak.updateWorkarounds}
             />,
